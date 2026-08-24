@@ -1,6 +1,6 @@
 -- Ajax Callback: ADD_NOTE (sequence 90)
 -- Called by: candidate_notes_js (external JS file)
--- Purpose:   Add a note to a specific job application
+-- Purpose:   Add a note to a specific job application + dual-write to Fusion
 -- Input:     g_x01 = job_application_id, g_x02 = note_text
 -- Output:    JSON { status, notes: [...], note_count }
 -- Tables:    candidate_note
@@ -13,6 +13,35 @@ BEGIN
     INSERT INTO candidate_note (job_application_id, note_text, created_by)
     VALUES (l_app_id, l_note_text,
             COALESCE(SYS_CONTEXT('APEX$SESSION','APP_USER'), USER));
+
+    -- Dual-write to Fusion (fire-and-forget)
+    BEGIN
+        DECLARE
+            l_fusion_result VARCHAR2(200);
+            l_person_id     NUMBER;
+        BEGIN
+            SELECT CANDIDATEPERSONID INTO l_person_id
+              FROM (SELECT CANDIDATEPERSONID,
+                           ROW_NUMBER() OVER (PARTITION BY JOBAPPLICATIONID
+                                              ORDER BY "APEX$ROW_SYNC_TIMESTAMP" DESC) rn
+                      FROM JOB_APPLICANTS_R
+                     WHERE JOBAPPLICATIONID = l_app_id)
+             WHERE rn = 1;
+
+            l_fusion_result := pkg_ui_interactions.post_interaction(
+                p_context_type_code => 'ORA_SUBMISSION',
+                p_context_id        => l_app_id,
+                p_person_id         => l_person_id,
+                p_note_text         => l_note_text
+            );
+
+            IF l_fusion_result = 'ORA_SUCCESS' THEN
+                pkg_ui_interactions.sync_person(l_person_id);
+            END IF;
+        END;
+    EXCEPTION
+        WHEN OTHERS THEN NULL;
+    END;
 
     -- Return updated notes list so the panel re-renders
     apex_json.open_object;
