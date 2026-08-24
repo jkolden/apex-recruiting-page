@@ -13,7 +13,8 @@ CREATE OR REPLACE PACKAGE pkg_ui_interactions AS
 --   ORA_CAND_PROFILE → applicant_note (keyed on person_id)
 -- =============================================================================
 
-    gc_credential CONSTANT VARCHAR2(60) := 'gcs_reports';
+    gc_post_credential CONSTANT VARCHAR2(60) := 'APEX_FA_IBZSJB_DEV2_DBMS_CRED';
+    gc_sync_credential CONSTANT VARCHAR2(60) := 'gcs_reports';
 
     -- POST a note to Fusion. Returns 'ORA_SUCCESS' or error description.
     -- NEVER raises — caller's local INSERT has already committed.

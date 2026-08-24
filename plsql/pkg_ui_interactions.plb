@@ -6,8 +6,7 @@ CREATE OR REPLACE PACKAGE BODY pkg_ui_interactions AS
     -- POST_INTERACTION
     -- =========================================================================
     -- POST a note to Fusion via the addInteraction action endpoint.
-    -- Uses Basic Auth because the custom Content-Type header breaks APEX
-    -- Web Credential OAuth flow (same issue as pkg_rec_move).
+    -- Uses gc_post_credential (logged-in user's Fusion session via OAuth).
     -- NEVER raises — returns result string so caller can proceed safely.
     -- =========================================================================
     FUNCTION post_interaction (
@@ -24,7 +23,7 @@ CREATE OR REPLACE PACKAGE BODY pkg_ui_interactions AS
         l_result   VARCHAR2(200);
         l_err_msg  VARCHAR2(4000);
     BEGIN
-        l_url := pkg_bicc_common.gc_fa_base_url
+        l_url := RTRIM(pkg_bicc_common.gc_fa_base_url, '/')
             || '/hcmRestApi/resources/11.13.18.05'
             || '/recruitingUIInteractions/action/addInteraction';
 
@@ -41,17 +40,18 @@ CREATE OR REPLACE PACKAGE BODY pkg_ui_interactions AS
           INTO l_payload
           FROM dual;
 
-        -- Set required Content-Type for Fusion action endpoints
+        -- POST with user's Fusion credential (OAuth token from APEX session)
         apex_web_service.g_request_headers.DELETE;
         apex_web_service.g_request_headers(1).name  := 'Content-Type';
         apex_web_service.g_request_headers(1).value := 'application/vnd.oracle.adf.action+json';
+        apex_web_service.g_request_headers(2).name  := 'Accept';
+        apex_web_service.g_request_headers(2).value := 'application/json';
 
         l_response := apex_web_service.make_rest_request(
-            p_url         => l_url,
-            p_http_method => 'POST',
-            p_body        => l_payload,
-            p_username    => apex_app_setting.get_value('BICC_FUSION_USERNAME'),
-            p_password    => apex_app_setting.get_value('BICC_FUSION_PASSWORD')
+            p_url                  => l_url,
+            p_http_method          => 'POST',
+            p_body                 => l_payload,
+            p_credential_static_id => gc_post_credential
         );
 
         l_status := apex_web_service.g_status_code;
@@ -122,7 +122,7 @@ CREATE OR REPLACE PACKAGE BODY pkg_ui_interactions AS
         l_body := apex_web_service.make_rest_request(
             p_url                  => l_url,
             p_http_method          => 'GET',
-            p_credential_static_id => gc_credential
+            p_credential_static_id => gc_sync_credential
         );
 
         IF apex_web_service.g_status_code NOT BETWEEN 200 AND 299 THEN
