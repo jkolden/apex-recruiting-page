@@ -62,9 +62,9 @@ wwv_flow_imp_page.create_page(
 ,p_warn_on_unsaved_changes=>'N'
 ,p_autocomplete_on_off=>'OFF'
 ,p_javascript_file_urls=>wwv_flow_string.join(wwv_flow_t_varchar2(
-'#APP_FILES#candidate_notes_js#MIN#.js',
-'#APP_FILES#candidate_phones_js#MIN#.js',
-'#APP_FILES#applicant_notes_js#MIN#.js',
+'#APP_FILES#app_notes_js.js',
+'#APP_FILES#candidate_phones_js.js',
+'#APP_FILES#person_notes_js.js',
 ''))
 ,p_javascript_code=>wwv_flow_string.join(wwv_flow_t_varchar2(
 unistr('/* \2500\2500 Drawer backdrop + inline alert (injected once on page load) \2500\2500 */'),
@@ -464,9 +464,9 @@ unistr('/* \2500\2500 Ref Link drawer alert + backdrop (injected once) \2500\250
 '}',
 ''))
 ,p_css_file_urls=>wwv_flow_string.join(wwv_flow_t_varchar2(
-'#APP_FILES#candidate_notes_css#MIN#.css',
+'#APP_FILES#app_notes_css.css',
 '#APP_FILES#candidate_phones_css.css',
-'#APP_FILES#applicant_notes_css#MIN#.css',
+'#APP_FILES#person_notes_css.css',
 '',
 ''))
 ,p_inline_css=>wwv_flow_string.join(wwv_flow_t_varchar2(
@@ -1193,10 +1193,10 @@ wwv_flow_imp_page.create_report_region(
 ,p_query_type=>'SQL'
 ,p_source=>wwv_flow_string.join(wwv_flow_t_varchar2(
 'SELECT',
-'null notes_toggle,',
+'null app_notes_toggle,',
 'note_count,',
 'APPLICANT_NOTE_COUNT,',
-'null applicant_notes_toggle,',
+'null person_notes_toggle,',
 'PHONE_COUNT,',
 'CAND_NUM ,',
 'working_retiree,',
@@ -1360,15 +1360,15 @@ wwv_flow_imp_page.create_report_region(
 wwv_flow_imp_page.create_report_columns(
  p_id=>wwv_flow_imp.id(116368030498692742)
 ,p_query_column_id=>1
-,p_column_alias=>'NOTES_TOGGLE'
+,p_column_alias=>'APP_NOTES_TOGGLE'
 ,p_column_display_sequence=>45
-,p_column_heading=>'Application Reviewer Notes'
+,p_column_heading=>'Application Notes'
 ,p_column_html_expression=>wwv_flow_string.join(wwv_flow_t_varchar2(
-' <button type="button" class="cnote-toggle"',
+' <button type="button" class="appnote-toggle"',
 '           data-app-id="#JOB_APPLICATION_ID#"',
-'           aria-label="Notes">',
+'           aria-label="Application Notes">',
 '     <span class="fa fa-comment-o"></span>',
-'     <span class="cnote-badge" data-count="#NOTE_COUNT#">#NOTE_COUNT#</span>',
+'     <span class="appnote-badge" data-count="#NOTE_COUNT#">#NOTE_COUNT#</span>',
 '   </button>'))
 ,p_column_alignment=>'CENTER'
 ,p_disable_sort_column=>'N'
@@ -1394,15 +1394,15 @@ wwv_flow_imp_page.create_report_columns(
 wwv_flow_imp_page.create_report_columns(
  p_id=>wwv_flow_imp.id(126366719865556202)
 ,p_query_column_id=>4
-,p_column_alias=>'APPLICANT_NOTES_TOGGLE'
+,p_column_alias=>'PERSON_NOTES_TOGGLE'
 ,p_column_display_sequence=>55
-,p_column_heading=>'Applicant-Specific Notes '
+,p_column_heading=>'Candidate Notes'
 ,p_column_html_expression=>wwv_flow_string.join(wwv_flow_t_varchar2(
-'<button type="button" class="anote-toggle"',
+'<button type="button" class="pnote-toggle"',
 '        data-person-id="#CAND_NUM#"',
-'        aria-label="Applicant Notes">',
+'        aria-label="Candidate Notes">',
 '  <span class="fa fa-comment-o"></span>',
-'  <span class="anote-badge" data-count="#APPLICANT_NOTE_COUNT#">#APPLICANT_NOTE_COUNT#</span>',
+'  <span class="pnote-badge" data-count="#APPLICANT_NOTE_COUNT#">#APPLICANT_NOTE_COUNT#</span>',
 '</button>',
 ''))
 ,p_column_alignment=>'CENTER'
@@ -1426,7 +1426,6 @@ wwv_flow_imp_page.create_report_columns(
 ''))
 ,p_column_alignment=>'CENTER'
 ,p_disable_sort_column=>'N'
-,p_report_column_required_role=>wwv_flow_imp.id(133153510612213767)
 ,p_derived_column=>'N'
 ,p_include_in_export=>'Y'
 );
@@ -2374,6 +2373,7 @@ wwv_flow_imp_page.create_page_button(
 ,p_button_position=>'NEXT'
 ,p_button_redirect_url=>'f?p=&APP_ID.:5001:&SESSION.::&DEBUG.::P5001_RETURN_PAGE:24'
 ,p_button_cattributes=>'style="color: blue"'
+,p_required_patch=>wwv_flow_imp.id(31940494526458252)
 );
 wwv_flow_imp_page.create_page_item(
  p_id=>wwv_flow_imp.id(104436695753414528)
@@ -3325,7 +3325,7 @@ wwv_flow_imp_page.create_page_process(
 ,p_process_sequence=>80
 ,p_process_point=>'ON_DEMAND'
 ,p_process_type=>'NATIVE_PLSQL'
-,p_process_name=>'GET_NOTES'
+,p_process_name=>'GET_APP_NOTES'
 ,p_process_sql_clob=>wwv_flow_string.join(wwv_flow_t_varchar2(
 'DECLARE',
 '    l_app_id   NUMBER := TO_NUMBER(apex_application.g_x01);',
@@ -3362,7 +3362,7 @@ wwv_flow_imp_page.create_page_process(
 ,p_process_sequence=>90
 ,p_process_point=>'ON_DEMAND'
 ,p_process_type=>'NATIVE_PLSQL'
-,p_process_name=>'ADD_NOTE'
+,p_process_name=>'ADD_APP_NOTE'
 ,p_process_sql_clob=>wwv_flow_string.join(wwv_flow_t_varchar2(
 'DECLARE',
 '    l_app_id    NUMBER        := TO_NUMBER(apex_application.g_x01);',
@@ -3461,7 +3461,7 @@ wwv_flow_imp_page.create_page_process(
 ,p_process_sequence=>110
 ,p_process_point=>'ON_DEMAND'
 ,p_process_type=>'NATIVE_PLSQL'
-,p_process_name=>'GET_APPLICANT_NOTES'
+,p_process_name=>'GET_PERSON_NOTES'
 ,p_process_sql_clob=>wwv_flow_string.join(wwv_flow_t_varchar2(
 'DECLARE',
 '    l_person_id NUMBER := TO_NUMBER(apex_application.g_x01);',
@@ -3498,7 +3498,7 @@ wwv_flow_imp_page.create_page_process(
 ,p_process_sequence=>120
 ,p_process_point=>'ON_DEMAND'
 ,p_process_type=>'NATIVE_PLSQL'
-,p_process_name=>'ADD_APPLICANT_NOTE'
+,p_process_name=>'ADD_PERSON_NOTE'
 ,p_process_sql_clob=>wwv_flow_string.join(wwv_flow_t_varchar2(
 'DECLARE',
 '    l_person_id NUMBER        := TO_NUMBER(apex_application.g_x01);',

@@ -5,6 +5,16 @@
 **Database**: Oracle Autonomous Transaction Processing (ATP)
 **Schema**: WKSP_FREEDEMO
 
+## Recent Changes
+
+**2026-09-03 — dev2 migration (v2 view)**
+- `RECRUITING_REPORT_V` updated for Fusion dev2 environment
+- EFF context renamed: "Additional GCS Person Data" + "GCS Job Application References" → merged into "GCS Recruiting Details" (`ext_flex_recruiting_v`)
+- Questionnaire reference codes renamed: `GCS_TEACH_REF_*` → `GCS_REF_EXT_*` / `GCS_EXT_REF_*` (view output aliases kept as `GCS_TEACH_REF_*` for APEX backward compatibility)
+- Retirement context: added `subject_to_earnings_limit`, `teri_begin_date`, `teri_end_date`
+- New recruiting detail columns: `pay_grade`, `pay_step`, `processing_owner`, `contract_type`, `teacher_years_of_experience`, `educator_id`, `cate_experience`, `fte`
+- View DDL files added to `views/` folder
+
 ## Overview
 
 Page 24 is the primary recruiting management page — a faceted search interactive report built on `RECRUITING_REPORT_V` that provides recruiters and hiring managers with a comprehensive view of all job applicants. The page integrates data from Oracle Fusion Cloud HCM via REST APIs and BICC extracts, and adds locally-managed features like applicant ranking, notes, and reference correction.
@@ -175,6 +185,12 @@ apex-recruiting-page-24/
 │   ├── get_phones.sql                 # Fetch candidate phones
 │   ├── get_applicant_notes.sql        # Fetch applicant notes (person-level)
 │   └── add_applicant_note.sql         # Add applicant note (person-level)
+├── views/                             # Database view DDL (deploy to ATP)
+│   ├── recruiting_report_v.sql        # Main report view (v2 — dev2 migration)
+│   ├── ext_flex_recruiting_v.sql      # EFF: GCS Recruiting Details context
+│   ├── ext_flex_retirement_v.sql      # EFF: GCS Retirement context
+│   ├── fbx_qstnr_v.sql               # Questionnaire mashup view
+│   └── fbx_qstnr_applicant_v.sql     # Applicant + questionnaire view
 └── docs/                              # Supplementary documentation
     ├── regions.md                     # APEX regions
     ├── page-items.md                  # All P24_* items
