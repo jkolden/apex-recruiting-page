@@ -1,0 +1,139 @@
+/* ==========================================================================
+   Candidate Notes — Inline Expand/Collapse
+   ========================================================================== */
+
+/* --- Detail row injected below a candidate --- */
+.cnote-detail-row > td {
+    padding: 4px 8px !important;
+    background: transparent !important;
+    border: none !important;
+}
+
+.cnote-panel {
+    padding: 12px 16px 14px;
+    background: var(--ut-component-background-color, #f8f9fa);
+    border: 2px solid var(--ut-palette-primary, #0572CE);
+    border-radius: 6px;
+    max-width: 600px;
+}
+
+/* --- Header --- */
+.cnote-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 8px;
+}
+
+.cnote-title {
+    font-size: 13px;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    color: var(--ut-heading-text-color, #333);
+}
+
+/* --- Add-note form --- */
+.cnote-add {
+    display: flex;
+    gap: 8px;
+    align-items: flex-start;
+    margin-bottom: 12px;
+}
+
+.cnote-input {
+    flex: 1;
+    padding: 6px 10px;
+    border: 1px solid var(--ut-component-border-color, #d0d5dd);
+    border-radius: 4px;
+    font-size: 13px;
+    font-family: inherit;
+    resize: vertical;
+    min-height: 130px;
+}
+
+.cnote-input:focus {
+    outline: none;
+    border-color: var(--ut-palette-primary, #0572CE);
+    box-shadow: 0 0 0 1px var(--ut-palette-primary, #0572CE);
+}
+
+/* --- Notes list --- */
+.cnote-list {
+    max-height: 240px;
+    overflow-y: auto;
+}
+
+.cnote-entry {
+    padding: 8px 10px;
+    border-left: 3px solid var(--ut-palette-primary, #0572CE);
+    margin-bottom: 6px;
+    background: #fff;
+    border-radius: 0 4px 4px 0;
+}
+
+.cnote-meta {
+    font-size: 11px;
+    color: var(--ut-component-text-muted-color, #6b7280);
+    margin-bottom: 2px;
+}
+
+.cnote-text {
+    font-size: 13px;
+    white-space: pre-wrap;
+    word-break: break-word;
+}
+
+.cnote-empty {
+    font-size: 13px;
+    color: var(--ut-component-text-muted-color, #6b7280);
+    font-style: italic;
+    padding: 4px 0;
+}
+
+.cnote-loading {
+    padding: 12px;
+    text-align: center;
+    color: var(--ut-component-text-muted-color, #6b7280);
+}
+
+.cnote-error {
+    padding: 8px;
+    color: var(--ut-palette-danger, #d92d20);
+}
+
+/* --- Toggle button + badge --- */
+.cnote-toggle {
+    position: relative;
+    cursor: pointer;
+    background: none;
+    border: none;
+    padding: 4px 8px;
+    font-size: 16px;
+    color: var(--ut-component-text-default-color, #344054);
+}
+
+.cnote-toggle:hover {
+    color: var(--ut-palette-primary, #0572CE);
+}
+
+.cnote-badge {
+    position: absolute;
+    top: -4px;
+    right: -2px;
+    background: var(--ut-palette-primary, #0572CE);
+    color: #fff;
+    font-size: 10px;
+    font-weight: 700;
+    min-width: 16px;
+    height: 16px;
+    line-height: 16px;
+    text-align: center;
+    border-radius: 8px;
+    padding: 0 4px;
+}
+
+/* Hide badge when count is 0 */
+.cnote-badge[data-count="0"] {
+    display: none;
+}

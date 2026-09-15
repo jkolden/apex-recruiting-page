@@ -1,0 +1,961 @@
+page 100 (
+    name: Correct Reference Information
+    alias: REF-CORRECT
+    title: Correct Reference Information
+    appearance {
+        pageTemplate: @/standard
+        templateOptions: #DEFAULT#
+    }
+    navigation {
+        cursorFocus: doNotFocusCursor
+        warnOnUnsavedChanges: false
+    }
+    javaScript {
+        functionAndGlobalVariableDeclaration:
+            ```javascript-browser
+            function formatPhone(itemName) {
+                var raw = apex.item(itemName).getValue().replace(/\D/g, '');
+                if (raw.length === 11 && raw[0] === '1') raw = raw.substr(1);
+                if (raw.length === 10) {
+                    var formatted = '(' + raw.substr(0,3) + ') ' + raw.substr(3,3) + '-' + raw.substr(6);
+                    if (formatted !== apex.item(itemName).getValue()) {
+                        apex.item(itemName).setValue(formatted, null, true);
+                    }
+                    $('#' + itemName).closest('.t-Form-fieldContainer').removeClass('phone-invalid').addClass('phone-valid');
+                } else if (raw.length === 0) {
+                    $('#' + itemName).closest('.t-Form-fieldContainer').removeClass('phone-invalid phone-valid');
+                } else {
+                    $('#' + itemName).closest('.t-Form-fieldContainer').removeClass('phone-valid').addClass('phone-invalid');
+                }
+            }
+            
+            function normalizeEmail(itemName) {
+                var v = apex.item(itemName).getValue().trim().toLowerCase();
+                if (v !== apex.item(itemName).getValue()) {
+                    apex.item(itemName).setValue(v, null, true);
+                }
+                var container = $('#' + itemName).closest('.t-Form-fieldContainer');
+                if (v === '') {
+                    container.removeClass('email-invalid email-valid');
+                } else if (/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(v)) {
+                    container.removeClass('email-invalid').addClass('email-valid');
+                } else {
+                    container.removeClass('email-valid').addClass('email-invalid');
+                }
+            }
+            
+            ```
+        executeWhenPageLoads:
+            ```javascript-browser
+            $('[id$="_PHONE"]').on('change blur', function() {
+                formatPhone(this.id);
+            });
+            $('[id$="_EMAIL"]').on('change blur', function() {
+                normalizeEmail(this.id);
+            });
+            
+            // Format any pre-populated values
+            $('[id$="_PHONE"]').each(function() {
+                if (this.value) formatPhone(this.id);
+            });
+            $('[id$="_EMAIL"]').each(function() {
+                if (this.value) normalizeEmail(this.id);
+            });
+            
+            ```
+    }
+    css {
+        inline:
+            ```css
+            /* ── Page-level styles for reference correction form ── */
+            .ref-section {
+                border: 1px solid #e0e0e0;
+                border-radius: 8px;
+                padding: 16px 20px;
+                margin-bottom: 16px;
+                background: #fafafa;
+            }
+            .ref-section h3 {
+                margin: 0 0 12px 0;
+                font-size: 15px;
+                color: #333;
+            }
+            .page-header-text {
+                font-size: 16px;
+                color: #555;
+                margin-bottom: 24px;
+                line-height: 1.5;
+            }
+            .expired-message {
+                text-align: center;
+                padding: 60px 20px;
+            }
+            .expired-message .fa {
+                font-size: 48px;
+                color: #cc4444;
+                margin-bottom: 16px;
+            }
+            .success-message {
+                text-align: center;
+                padding: 60px 20px;
+            }
+            .success-message .fa {
+                font-size: 48px;
+                color: #2c5f2d;
+                margin-bottom: 16px;
+            }
+            /* Hide navigation on public page */
+            .t-Header-nav-list, .t-TreeNav {
+                display: none !important;
+            }
+            
+            /* Hide entire header/nav on public page */
+            .t-Header, .t-Body-nav, .t-TreeNav {
+                display: none !important;
+            }
+            .t-Body-content {
+                margin-left: 0 !important;
+            }
+            .t-Body {
+                padding-top: 0 !important;
+            }
+            
+            
+            #refConfirmDlg {
+                padding: 16px 20px;
+                overflow: visible;
+            }
+            .ui-dialog:has(#refConfirmDlg) {
+                max-height: 80vh;
+            }
+            .ui-dialog:has(#refConfirmDlg) .ui-dialog-content {
+                max-height: none !important;
+                overflow: visible !important;
+            }
+            
+            .phone-valid .apex-item-text,
+            .email-valid .apex-item-text {
+                border-color: #16a34a !important;
+                box-shadow: 0 0 0 1px #16a34a inset;
+            }
+            .phone-invalid .apex-item-text,
+            .email-invalid .apex-item-text {
+                border-color: #dc2626 !important;
+                box-shadow: 0 0 0 1px #dc2626 inset;
+            }
+            
+            .display_only a {
+                pointer-events: none;
+                color: inherit;
+                text-decoration: none;
+            }
+            
+            ```
+    }
+    security {
+        authentication: public
+        formAutoComplete: false
+    }
+    comments {
+        comments:
+            ```
+            CONFIRMATION MODAL (Page 101) — Implementation Notes
+            =====================================================
+            Page 100 submits (saving form values to session state) and branches
+            to page 101 (Modal Dialog), which opens as an overlay.
+            
+            Page 101 shows a classic report comparing database originals vs the
+            user's edits (read from P100_* session state). The Confirm button
+            uses a Dynamic Action (NOT Submit Page):
+              - True Action 1: Server-side PL/SQL calls save_corrections and
+                sets P100_SUBMITTED = 'Y' in session state
+              - True Action 2: JavaScript redirects the parent window:
+                window.parent.location.href = 'f?p=&APP_ID.:100:&APP_SESSION.';
+            
+            The dialog iframe dies when the parent navigates. Page 100 reloads,
+            Before Header sees P100_SUBMITTED = 'Y', and the Thank You region
+            displays.
+            
+            APEX GOTCHAS (discovered during build):
+              - Dialog Closed DA does NOT fire when dialog was opened via branch
+              - apex.navigation.dialog() requires a server-generated checksum
+              - Close Dialog process closes the modal but can't trigger parent DA
+              - Passing items in f?p URL triggers checksum errors even with
+                Unrestricted page protection — set session state via PL/SQL
+                instead and redirect with a clean URL (no item params)
+              - P100_SUBMITTED must have Session State Protection = Unrestricted
+            
+            ```
+    }
+
+    region correct-your-reference-information (
+        name: Correct Your Reference Information
+        type: staticContent
+        layout {
+            sequence: 20
+            slot: body
+        }
+        appearance {
+            template: @/standard
+            templateOptions: [
+                #DEFAULT#
+                t-Region--hideHeader js-addHiddenHeadingRoleDesc
+                t-Region--scrollBody
+            ]
+        }
+        headerAndFooter {
+            headerText:
+                ```html
+                <div class="page-header-text">
+                    Hello <strong>&P100_CANDIDATE_NAME.</strong>, please review the reference
+                    contact information below. Correct any errors and click
+                    <strong>Submit Corrections</strong>.
+                </div>
+                ```
+        }
+        serverSideCondition {
+            type: expression
+            plsqlExpression: :P100_VALID = 'Y' AND NVL(:P100_SUBMITTED,'N') != 'Y'
+        }
+    )
+
+    region hidden-items (
+        name: Hidden Items
+        type: staticContent
+        layout {
+            sequence: 1
+            slot: body
+        }
+        appearance {
+            template: @/standard
+            templateOptions: [
+                #DEFAULT#
+                t-Region--noPadding
+                t-Region--hideHeader js-addHiddenHeadingRoleDesc
+                t-Region--scrollBody
+            ]
+        }
+    )
+
+    region link-unavailable (
+        name: Link Unavailable
+        type: staticContent
+        source {
+            htmlCode:
+                ```html
+                <div class="expired-message">
+                    <div><span class="fa fa-times-circle-o"></span></div>
+                    <h2>Link Unavailable</h2>
+                    <p>This correction link has expired, has already been used, or is invalid.</p>
+                    <p>Please contact Greenville County Schools HR for a new link.</p>
+                </div>
+                ```
+        }
+        layout {
+            sequence: 10
+            slot: body
+        }
+        appearance {
+            template: @/standard
+            templateOptions: [
+                #DEFAULT#
+                t-Region--noPadding
+                t-Region--hideHeader js-addHiddenHeadingRoleDesc
+                t-Region--scrollBody
+            ]
+        }
+        serverSideCondition {
+            type: expression
+            plsqlExpression: :P100_VALID = 'N' AND NVL(:P100_SUBMITTED,'N') != 'Y'
+        }
+    )
+
+    region reference (
+        name: Reference 1
+        type: staticContent
+        layout {
+            sequence: 10
+            parentRegion: @correct-your-reference-information
+            slot: regionBody
+        }
+        appearance {
+            template: @/standard
+            templateOptions: [
+                #DEFAULT#
+                t-Region--scrollBody
+            ]
+        }
+    )
+
+    region reference-2 (
+        name: Reference 2
+        type: staticContent
+        layout {
+            sequence: 20
+            parentRegion: @correct-your-reference-information
+            slot: regionBody
+        }
+        appearance {
+            template: @/standard
+            templateOptions: [
+                #DEFAULT#
+                t-Region--scrollBody
+            ]
+        }
+    )
+
+    region reference-3 (
+        name: Reference 3
+        type: staticContent
+        layout {
+            sequence: 30
+            parentRegion: @correct-your-reference-information
+            slot: regionBody
+        }
+        appearance {
+            template: @/standard
+            templateOptions: [
+                #DEFAULT#
+                t-Region--scrollBody
+            ]
+        }
+    )
+
+    region thank-you (
+        name: Thank You
+        type: staticContent
+        source {
+            htmlCode:
+                ```html
+                <div class="success-message">
+                    <div><span class="fa fa-check-circle-o"></span></div>
+                    <h2>Thank You!</h2>
+                    <p>Your reference corrections have been submitted successfully.</p>
+                    <p>You may close this page.</p>
+                </div>
+                ```
+        }
+        layout {
+            sequence: 30
+            slot: body
+        }
+        appearance {
+            template: @/standard
+            templateOptions: [
+                #DEFAULT#
+                t-Region--noPadding
+                t-Region--hideHeader js-addHiddenHeadingRoleDesc
+                t-Region--scrollBody
+            ]
+        }
+        serverSideCondition {
+            type: item=value
+            item: P100_SUBMITTED
+            value: Y
+        }
+    )
+
+    pageItem P100_CANDIDATE_NAME (
+        type: hidden
+        settings {
+            valueProtected: false
+        }
+        layout {
+            sequence: 30
+            region: @hidden-items
+            slot: regionBody
+        }
+        security {
+            sessionStateProtection: checksumRequiredSessionLevel
+        }
+    )
+
+    pageItem P100_DIALOG_URL (
+        type: hidden
+        layout {
+            sequence: 60
+            region: @hidden-items
+            slot: regionBody
+        }
+    )
+
+    pageItem P100_JOB_APPLICATION_ID (
+        type: hidden
+        settings {
+            valueProtected: false
+        }
+        layout {
+            sequence: 20
+            region: @hidden-items
+            slot: regionBody
+        }
+        security {
+            sessionStateProtection: checksumRequiredSessionLevel
+        }
+    )
+
+    pageItem P100_REF_1_EMAIL (
+        type: textField
+        label {
+            label: Email
+            alignment: left
+        }
+        settings {
+            subtype: email
+        }
+        layout {
+            sequence: 30
+            region: @reference
+            slot: regionBody
+            alignment: left
+            startNewRow: false
+        }
+        appearance {
+            template: @/optional-above
+            templateOptions: [
+                #DEFAULT#
+                t-Form-fieldContainer--stretchInputs
+            ]
+        }
+        readOnly {
+            type: item=value
+            item: P100_REF_1_SURVEY_YN
+            value: Y
+        }
+    )
+
+    pageItem P100_REF_1_NAME (
+        type: textField
+        label {
+            label: Name
+            alignment: left
+        }
+        layout {
+            sequence: 10
+            region: @reference
+            slot: regionBody
+            alignment: left
+        }
+        appearance {
+            template: @/optional-above
+            templateOptions: [
+                #DEFAULT#
+                t-Form-fieldContainer--stretchInputs
+            ]
+        }
+        readOnly {
+            type: item=value
+            item: P100_REF_1_SURVEY_YN
+            value: Y
+        }
+    )
+
+    pageItem P100_REF_1_PHONE (
+        type: textField
+        label {
+            label: Phone
+            alignment: left
+        }
+        settings {
+            subtype: phone
+        }
+        layout {
+            sequence: 20
+            region: @reference
+            slot: regionBody
+            alignment: left
+            startNewRow: false
+        }
+        appearance {
+            template: @/optional-above
+            templateOptions: [
+                #DEFAULT#
+                t-Form-fieldContainer--stretchInputs
+            ]
+        }
+        readOnly {
+            type: item=value
+            item: P100_REF_1_SURVEY_YN
+            value: Y
+        }
+    )
+
+    pageItem P100_REF_1_SURVEY_YN (
+        type: hidden
+        layout {
+            sequence: 40
+            region: @reference
+            slot: regionBody
+        }
+    )
+
+    pageItem P100_REF_2_EMAIL (
+        type: textField
+        label {
+            label: Email
+            alignment: left
+        }
+        settings {
+            subtype: email
+        }
+        layout {
+            sequence: 30
+            region: @reference-2
+            slot: regionBody
+            alignment: left
+            startNewRow: false
+        }
+        appearance {
+            template: @/optional-above
+            templateOptions: [
+                #DEFAULT#
+                t-Form-fieldContainer--stretchInputs
+            ]
+            width: 60
+        }
+        validation {
+            maxLength: 500
+        }
+        readOnly {
+            type: item=value
+            item: P100_REF_2_SURVEY_YN
+            value: Y
+        }
+    )
+
+    pageItem P100_REF_2_NAME (
+        type: textField
+        label {
+            label: Name
+            alignment: left
+        }
+        layout {
+            sequence: 10
+            region: @reference-2
+            slot: regionBody
+            alignment: left
+        }
+        appearance {
+            template: @/optional-above
+            templateOptions: [
+                #DEFAULT#
+                t-Form-fieldContainer--stretchInputs
+            ]
+            width: 60
+        }
+        validation {
+            maxLength: 500
+        }
+        readOnly {
+            type: item=value
+            item: P100_REF_2_SURVEY_YN
+            value: Y
+        }
+    )
+
+    pageItem P100_REF_2_PHONE (
+        type: textField
+        label {
+            label: Phone
+            alignment: left
+        }
+        settings {
+            subtype: phone
+        }
+        layout {
+            sequence: 20
+            region: @reference-2
+            slot: regionBody
+            alignment: left
+            startNewRow: false
+        }
+        appearance {
+            template: @/optional-above
+            templateOptions: [
+                #DEFAULT#
+                t-Form-fieldContainer--stretchInputs
+            ]
+            width: 30
+        }
+        validation {
+            maxLength: 100
+        }
+        readOnly {
+            type: item=value
+            item: P100_REF_2_SURVEY_YN
+            value: Y
+        }
+    )
+
+    pageItem P100_REF_2_SURVEY_YN (
+        type: hidden
+        layout {
+            sequence: 40
+            region: @reference-2
+            slot: regionBody
+        }
+    )
+
+    pageItem P100_REF_3_EMAIL (
+        type: textField
+        label {
+            label: Email
+            alignment: left
+        }
+        settings {
+            subtype: email
+        }
+        layout {
+            sequence: 30
+            region: @reference-3
+            slot: regionBody
+            alignment: left
+            startNewRow: false
+        }
+        appearance {
+            template: @/optional-above
+            templateOptions: [
+                #DEFAULT#
+                t-Form-fieldContainer--stretchInputs
+            ]
+            width: 60
+        }
+        validation {
+            maxLength: 500
+        }
+        readOnly {
+            type: item=value
+            item: P100_REF_3_SURVEY_YN
+            value: Y
+        }
+    )
+
+    pageItem P100_REF_3_NAME (
+        type: textField
+        label {
+            label: Name
+            alignment: left
+        }
+        layout {
+            sequence: 10
+            region: @reference-3
+            slot: regionBody
+            alignment: left
+        }
+        appearance {
+            template: @/optional-above
+            templateOptions: [
+                #DEFAULT#
+                t-Form-fieldContainer--stretchInputs
+            ]
+            width: 60
+        }
+        validation {
+            maxLength: 500
+        }
+        readOnly {
+            type: item=value
+            item: P100_REF_3_SURVEY_YN
+            value: Y
+        }
+    )
+
+    pageItem P100_REF_3_PHONE (
+        type: textField
+        label {
+            label: Phone
+            alignment: left
+        }
+        settings {
+            subtype: phone
+        }
+        layout {
+            sequence: 20
+            region: @reference-3
+            slot: regionBody
+            alignment: left
+            startNewRow: false
+        }
+        appearance {
+            template: @/optional-above
+            templateOptions: [
+                #DEFAULT#
+                t-Form-fieldContainer--stretchInputs
+            ]
+            width: 30
+        }
+        validation {
+            maxLength: 100
+        }
+        readOnly {
+            type: item=value
+            item: P100_REF_3_SURVEY_YN
+            value: Y
+        }
+    )
+
+    pageItem P100_REF_3_SURVEY_YN (
+        type: hidden
+        layout {
+            sequence: 40
+            region: @reference-3
+            slot: regionBody
+        }
+    )
+
+    pageItem P100_SUBMITTED (
+        type: hidden
+        settings {
+            valueProtected: false
+        }
+        layout {
+            sequence: 50
+            region: @hidden-items
+            slot: regionBody
+        }
+        default {
+            type: static
+            staticValue: N
+        }
+        security {
+            sessionStateProtection: checksumRequiredSessionLevel
+        }
+    )
+
+    pageItem P100_TOKEN (
+        type: hidden
+        settings {
+            valueProtected: false
+        }
+        layout {
+            sequence: 10
+            region: @hidden-items
+            slot: regionBody
+        }
+    )
+
+    pageItem P100_VALID (
+        type: hidden
+        settings {
+            valueProtected: false
+        }
+        layout {
+            sequence: 40
+            region: @hidden-items
+            slot: regionBody
+        }
+        default {
+            type: static
+            staticValue: N
+        }
+        security {
+            sessionStateProtection: checksumRequiredSessionLevel
+        }
+    )
+
+    button submit-corrections (
+        buttonName: SUBMIT_CORRECTIONS
+        label: Submit Corrections
+        layout {
+            sequence: 10
+            region: @correct-your-reference-information
+            slot: change
+        }
+        appearance {
+            buttonTemplate: @/text-with-icon
+            hot: true
+            templateOptions: [
+                #DEFAULT#
+                t-Button--iconLeft
+            ]
+            icon: fa-check
+        }
+        behavior {
+            warnOnUnsavedChanges: doNotCheck
+        }
+        advanced {
+            htmlDomId: SUBMIT_CORRECTIONS
+        }
+    )
+
+    dynamicAction dialog (
+        name: dialog
+        execution {
+            sequence: 10
+        }
+        when {
+            event: apexafterclosedialog
+            selectionType: button
+            button: @submit-corrections
+        }
+
+        action native-set-value (
+            action: setValue
+            settings {
+                value: Y
+            }
+            affectedElements {
+                selectionType: items
+                items: P100_SUBMITTED
+            }
+            execution {
+                sequence: 10
+            }
+        )
+
+        action native-submit-page (
+            action: submitPage
+            execution {
+                sequence: 20
+                fireOnInit: false
+            }
+        )
+
+    )
+
+    process validate-token-and-load-data (
+        name: Validate Token and Load Data
+        type: executeCode
+        source {
+            plsqlCode:
+                ```plsql
+                DECLARE
+                    l_app_id   NUMBER;
+                    l_name     VARCHAR2(500);
+                BEGIN
+                    l_app_id := pkg_ref_correction.validate_token(:P100_TOKEN);
+                
+                    IF l_app_id IS NULL THEN
+                        :P100_VALID := 'N';
+                        RETURN;
+                    END IF;
+                
+                    :P100_VALID := 'Y';
+                    :P100_JOB_APPLICATION_ID := l_app_id;
+                
+                    -- Get candidate name
+                    BEGIN
+                        SELECT CANDIDATENAME INTO l_name
+                          FROM JOB_APPLICANTS_R
+                         WHERE JOBAPPLICATIONID = l_app_id
+                           AND ROWNUM = 1;
+                        :P100_CANDIDATE_NAME := l_name;
+                    EXCEPTION
+                        WHEN NO_DATA_FOUND THEN
+                            :P100_CANDIDATE_NAME := 'Applicant';
+                    END;
+                
+                    -- Pre-populate from questionnaire
+                    -- Question codes renamed in dev2: GCS_TEACH_REF_* -> GCS_REF_EXT_* / GCS_EXT_REF_*
+                    BEGIN
+                        SELECT
+                            MAX(CASE WHEN QUESTION_CODE = 'GCS_REF_EXT_NAME1'   THEN ANSWER_TEXT END),
+                            MAX(CASE WHEN QUESTION_CODE = 'GCS_EXT_REF_PHONE1'  THEN ANSWER_TEXT END),
+                            MAX(CASE WHEN QUESTION_CODE = 'GCS_REF_EXT_EMAIL1'  THEN ANSWER_TEXT END),
+                            MAX(CASE WHEN QUESTION_CODE = 'GCS_EXT_REF_NAME2'   THEN ANSWER_TEXT END),
+                            MAX(CASE WHEN QUESTION_CODE = 'GCS_EXT_REF_PHONE2'  THEN ANSWER_TEXT END),
+                            MAX(CASE WHEN QUESTION_CODE = 'GCS_EXT_REF_EMAIL2'  THEN ANSWER_TEXT END),
+                            MAX(CASE WHEN QUESTION_CODE = 'GCS_EXT_REF_NAME3'   THEN ANSWER_TEXT END),
+                            MAX(CASE WHEN QUESTION_CODE = 'GCS_EXT_REF_PHONE3'  THEN ANSWER_TEXT END),
+                            MAX(CASE WHEN QUESTION_CODE = 'GCS_EXT_REF_EMAIL3'  THEN ANSWER_TEXT END)
+                        INTO
+                            :P100_REF_1_NAME, :P100_REF_1_PHONE, :P100_REF_1_EMAIL,
+                            :P100_REF_2_NAME, :P100_REF_2_PHONE, :P100_REF_2_EMAIL,
+                            :P100_REF_3_NAME, :P100_REF_3_PHONE, :P100_REF_3_EMAIL
+                        FROM FBX_QSTNR_V
+                        WHERE SUBJECT_ID = :P100_JOB_APPLICATION_ID
+                          AND QUESTION_CODE IN (
+                              'GCS_REF_EXT_NAME1','GCS_EXT_REF_PHONE1','GCS_REF_EXT_EMAIL1',
+                              'GCS_EXT_REF_NAME2','GCS_EXT_REF_PHONE2','GCS_EXT_REF_EMAIL2',
+                              'GCS_EXT_REF_NAME3','GCS_EXT_REF_PHONE3','GCS_EXT_REF_EMAIL3'
+                          );
+                    EXCEPTION
+                        WHEN NO_DATA_FOUND THEN NULL;
+                    END;
+                
+                    -- Overlay with any existing corrections
+                    BEGIN
+                        SELECT
+                            COALESCE(ref_1_name,  :P100_REF_1_NAME),
+                            COALESCE(ref_1_phone, :P100_REF_1_PHONE),
+                            COALESCE(ref_1_email, :P100_REF_1_EMAIL),
+                            COALESCE(ref_2_name,  :P100_REF_2_NAME),
+                            COALESCE(ref_2_phone, :P100_REF_2_PHONE),
+                            COALESCE(ref_2_email, :P100_REF_2_EMAIL),
+                            COALESCE(ref_3_name,  :P100_REF_3_NAME),
+                            COALESCE(ref_3_phone, :P100_REF_3_PHONE),
+                            COALESCE(ref_3_email, :P100_REF_3_EMAIL)
+                        INTO
+                            :P100_REF_1_NAME, :P100_REF_1_PHONE, :P100_REF_1_EMAIL,
+                            :P100_REF_2_NAME, :P100_REF_2_PHONE, :P100_REF_2_EMAIL,
+                            :P100_REF_3_NAME, :P100_REF_3_PHONE, :P100_REF_3_EMAIL
+                        FROM ref_correction
+                        WHERE job_application_id = :P100_JOB_APPLICATION_ID;
+                    EXCEPTION
+                        WHEN NO_DATA_FOUND THEN NULL;
+                    END;
+                
+                    -- Format phone numbers and emails
+                    :P100_REF_1_PHONE := fmt_phone(:P100_REF_1_PHONE);
+                    :P100_REF_2_PHONE := fmt_phone(:P100_REF_2_PHONE);
+                    :P100_REF_3_PHONE := fmt_phone(:P100_REF_3_PHONE);
+                    :P100_REF_1_EMAIL := LOWER(TRIM(:P100_REF_1_EMAIL));
+                    :P100_REF_2_EMAIL := LOWER(TRIM(:P100_REF_2_EMAIL));
+                    :P100_REF_3_EMAIL := LOWER(TRIM(:P100_REF_3_EMAIL));
+                
+                    -- Check which references have already responded to surveys
+                    :P100_REF_1_SURVEY_YN := 'N';
+                    :P100_REF_2_SURVEY_YN := 'N';
+                    :P100_REF_3_SURVEY_YN := 'N';
+                
+                    BEGIN
+                        SELECT
+                            NVL(MAX(CASE WHEN LOWER(TRIM(href.REF_EMAIL)) = :P100_REF_1_EMAIL
+                                         THEN 'Y' END), 'N'),
+                            NVL(MAX(CASE WHEN LOWER(TRIM(href.REF_EMAIL)) = :P100_REF_2_EMAIL
+                                         THEN 'Y' END), 'N'),
+                            NVL(MAX(CASE WHEN LOWER(TRIM(href.REF_EMAIL)) = :P100_REF_3_EMAIL
+                                         THEN 'Y' END), 'N')
+                        INTO :P100_REF_1_SURVEY_YN, :P100_REF_2_SURVEY_YN, :P100_REF_3_SURVEY_YN
+                        FROM CANDIDATE_REFERENCES href
+                        JOIN CANDIDATE_REFERENCE_ANSWERS sa
+                            ON sa.SURVEY_TOKEN = href.SURVEY_TOKEN
+                        WHERE href.PERSON_ID = (SELECT CANDIDATEPERSONID
+                                                FROM JOB_APPLICANTS_R
+                                                WHERE JOBAPPLICATIONID = :P100_JOB_APPLICATION_ID
+                                                AND ROWNUM = 1);
+                    EXCEPTION
+                        WHEN NO_DATA_FOUND THEN NULL;
+                    END;
+                
+                END;
+                
+                ```
+        }
+        execution {
+            sequence: 10
+            point: beforeHeader
+        }
+        advanced {
+            executionMappingIdentifier: 500000000000000040
+        }
+    )
+
+    branch (
+        name: Go To Page 101
+        execution {
+            sequence: 10
+            point: afterSubmit
+        }
+        behavior {
+            target: {
+                page: 101
+            }
+        }
+        serverSideCondition {
+            whenButtonPressed: @submit-corrections
+        }
+    )
+
+)
+

@@ -1,0 +1,273 @@
+page 9997 (
+    name: Locations and Depts
+    alias: LOCATIONS-AND-DEPTS
+    title: Locations and Depts
+    appearance {
+        pageTemplate: @/standard
+        templateOptions: #DEFAULT#
+    }
+    navigation {
+        cursorFocus: doNotFocusCursor
+    }
+    security {
+        pageAccessProtection: argumentsMustHaveChecksum
+        formAutoComplete: false
+    }
+
+    region locations-and-depts (
+        name: Locations and Depts
+        type: interactiveReport
+        source {
+            location: localDatabase
+            type: sqlQuery
+            sqlQuery:
+                ```sql
+                SELECT c002  AS position_name,
+                       c005  AS position_code,
+                       c003  AS location_name,
+                       c006  AS location_code,
+                       c004  AS department_name,
+                       c007  AS job_name,
+                       n001  AS location_id,
+                       n002  AS department_id,
+                       n003  AS position_id
+                  FROM apex_collections
+                 WHERE collection_name = 'FUSION_USER_ASSIGNMENTS'
+                 ORDER BY location_name, department_name;
+                ```
+        }
+        layout {
+            sequence: 10
+            slot: body
+        }
+        appearance {
+            template: @/interactive-report
+            templateOptions: [
+                #DEFAULT#
+                t-IRR-region--hideHeader js-addHiddenHeadingRoleDesc
+            ]
+        }
+        pagination {
+            type: rowRangesXToY
+        }
+        messages {
+            whenNoDataFound: No data found.
+            whenMoreDataFound: The maximum row count for this report is #MAX_ROW_COUNT# rows.  Please apply a filter to reduce the number of records in your query.
+        }
+        searchBar {
+            rowsPerPageSelector: true
+        }
+        actionsMenu {
+            rowsPerPage: false
+            savePublicReport: true
+        }
+        advanced {
+            savedReportMappingIdentifier: 133370701553343332
+        }
+
+        column DEPARTMENT_ID (
+            type: plainText
+            heading {
+                heading: Department Id
+                alignment: end
+            }
+            layout {
+                sequence: 8
+                columnAlignment: end
+            }
+            source {
+                dataType: NUMBER
+            }
+            advanced {
+                endUserAlias: H
+            }
+        )
+
+        column DEPARTMENT_NAME (
+            type: plainText
+            heading {
+                heading: Department Name
+            }
+            layout {
+                sequence: 5
+            }
+            source {
+                dataType: STRING
+            }
+            advanced {
+                endUserAlias: E
+            }
+        )
+
+        column JOB_NAME (
+            type: plainText
+            heading {
+                heading: Job Name
+            }
+            layout {
+                sequence: 6
+            }
+            source {
+                dataType: STRING
+            }
+            advanced {
+                endUserAlias: F
+            }
+        )
+
+        column LOCATION_CODE (
+            type: plainText
+            heading {
+                heading: Location Code
+            }
+            layout {
+                sequence: 4
+            }
+            source {
+                dataType: STRING
+            }
+            advanced {
+                endUserAlias: D
+            }
+        )
+
+        column LOCATION_ID (
+            type: plainText
+            heading {
+                heading: Location Id
+                alignment: end
+            }
+            layout {
+                sequence: 7
+                columnAlignment: end
+            }
+            source {
+                dataType: NUMBER
+            }
+            advanced {
+                endUserAlias: G
+            }
+        )
+
+        column LOCATION_NAME (
+            type: plainText
+            heading {
+                heading: Location Name
+            }
+            layout {
+                sequence: 3
+            }
+            source {
+                dataType: STRING
+            }
+            advanced {
+                endUserAlias: C
+            }
+        )
+
+        column POSITION_CODE (
+            type: plainText
+            heading {
+                heading: Position Code
+            }
+            layout {
+                sequence: 2
+            }
+            source {
+                dataType: STRING
+            }
+            advanced {
+                endUserAlias: B
+            }
+        )
+
+        column POSITION_ID (
+            type: plainText
+            heading {
+                heading: Position Id
+                alignment: end
+            }
+            layout {
+                sequence: 9
+                columnAlignment: end
+            }
+            source {
+                dataType: NUMBER
+            }
+            advanced {
+                endUserAlias: I
+            }
+        )
+
+        column POSITION_NAME (
+            type: plainText
+            heading {
+                heading: Position Name
+            }
+            layout {
+                sequence: 1
+            }
+            source {
+                dataType: STRING
+            }
+            advanced {
+                endUserAlias: A
+            }
+        )
+
+        page {
+            borderWidth: 0.5
+            borderColor: #666666
+        }
+        pageHeader {
+            pageHeaderText: Locations and Depts
+        }
+
+        savedReport 1333756 (
+            visibility: primaryDefault
+            view {
+                rowsPerPage: 50
+            }
+
+            displayColumn DEPARTMENT_ID (
+                sequence: 8
+            )
+
+            displayColumn DEPARTMENT_NAME (
+                sequence: 5
+            )
+
+            displayColumn JOB_NAME (
+                sequence: 6
+            )
+
+            displayColumn LOCATION_CODE (
+                sequence: 4
+            )
+
+            displayColumn LOCATION_ID (
+                sequence: 7
+            )
+
+            displayColumn LOCATION_NAME (
+                sequence: 3
+            )
+
+            displayColumn POSITION_CODE (
+                sequence: 2
+            )
+
+            displayColumn POSITION_ID (
+                sequence: 9
+            )
+
+            displayColumn POSITION_NAME (
+                sequence: 1
+            )
+
+        )
+
+    )
+
+)
+

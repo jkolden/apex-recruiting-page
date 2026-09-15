@@ -1,0 +1,491 @@
+page 9996 (
+    name: Override Grants
+    alias: OVERRIDE-GRANTS
+    title: Override Grants
+    appearance {
+        pageMode: modalDialog
+        dialogTemplate: @/drawer
+        templateOptions: [
+            #DEFAULT#
+            js-dialog-class-t-Drawer--pullOutEnd
+        ]
+    }
+    dialog {
+        chained: false
+    }
+    navigation {
+        cursorFocus: doNotFocusCursor
+    }
+    security {
+        pageAccessProtection: argumentsMustHaveChecksum
+        formAutoComplete: false
+    }
+
+    region buttons (
+        name: Buttons
+        type: staticContent
+        layout {
+            sequence: 20
+            slot: dialogFooter
+        }
+        appearance {
+            template: @/buttons-container
+            templateOptions: #DEFAULT#
+        }
+        settings {
+            outputAs: text
+        }
+    )
+
+    region override-grants (
+        name: Override Grants
+        type: form
+        source {
+            location: localDatabase
+            tableName: REC_DEPT_GRANT
+        }
+        layout {
+            sequence: 10
+            slot: contentBody
+        }
+        appearance {
+            template: @/blank-with-attributes
+            templateOptions: #DEFAULT#
+        }
+        edit {
+            enabled: true
+            allowedOperations: [
+                add
+                update
+                delete
+            ]
+        }
+    )
+
+    pageItem P9996_APP_USER (
+        type: popupLov
+        label {
+            label: App User
+            alignment: left
+        }
+        lov {
+            type: sqlQuery
+            sqlQuery:
+                ```sql
+                SELECT DISPLAY_NAME || ' (' || UPPER(USER_NAME) || ')'  AS display_value,
+                       UPPER(USER_NAME)                                  AS return_value
+                  FROM FBX_HCM_EMPLOYEE
+                 WHERE USER_NAME IS NOT NULL
+                 ORDER BY DISPLAY_NAME
+                
+                ```
+        }
+        layout {
+            sequence: 20
+            region: @override-grants
+            slot: regionBody
+            alignment: left
+        }
+        appearance {
+            template: @/required-floating
+            templateOptions: #DEFAULT#
+            width: 32
+        }
+        validation {
+            valueRequired: true
+            maxLength: 255
+        }
+        source {
+            formRegion: @override-grants
+            column: APP_USER
+            dataType: varchar2
+        }
+    )
+
+    pageItem P9996_DEPT_NAME (
+        type: popupLov
+        label {
+            label: Department
+            alignment: left
+        }
+        lov {
+            type: sqlQuery
+            sqlQuery:
+                ```sql
+                SELECT DISTINCT d.NAME     AS display_value,
+                                d.NAME     AS return_value
+                  FROM DEPARTMENTS_R d
+                  JOIN JOB_REQUISITIONS_R req
+                    ON req.DEPARTMENTID = d.ORGANIZATIONID
+                 WHERE d.NAME IS NOT NULL
+                   AND d.ACTIVESTATUS = 'A'
+                 ORDER BY d.NAME;
+                ```
+        }
+        layout {
+            sequence: 30
+            region: @override-grants
+            slot: regionBody
+            alignment: left
+        }
+        appearance {
+            template: @/required-floating
+            templateOptions: #DEFAULT#
+            width: 32
+        }
+        validation {
+            valueRequired: true
+            maxLength: 240
+        }
+        source {
+            formRegion: @override-grants
+            column: DEPT_NAME
+            dataType: varchar2
+        }
+    )
+
+    pageItem P9996_GRANTED_BY (
+        type: hidden
+        layout {
+            sequence: 70
+            region: @override-grants
+            slot: regionBody
+        }
+        source {
+            formRegion: @override-grants
+            column: GRANTED_BY
+            dataType: varchar2
+        }
+    )
+
+    pageItem P9996_GRANTED_TS (
+        type: hidden
+        layout {
+            sequence: 80
+            region: @override-grants
+            slot: regionBody
+        }
+        source {
+            formRegion: @override-grants
+            column: GRANTED_TS
+            dataType: timestamp
+        }
+    )
+
+    pageItem P9996_HIRING_MGR_ID (
+        type: selectList
+        label {
+            label: Hiring Manager
+            alignment: left
+        }
+        lov {
+            type: sqlQuery
+            sqlQuery:
+                ```sql
+                SELECT DISTINCT e.DISPLAY_NAME      AS display_value,
+                                req.HIRINGMANAGERID AS return_value
+                  FROM JOB_REQUISITIONS_R req
+                  JOIN DEPARTMENTS_R d
+                    ON d.ORGANIZATIONID = req.DEPARTMENTID
+                  JOIN FBX_HCM_EMPLOYEE e
+                    ON e.PERSON_ID = req.HIRINGMANAGERID
+                 WHERE d.NAME              = :P9996_DEPT_NAME
+                   AND req.HIRINGMANAGERID IS NOT NULL
+                 ORDER BY e.DISPLAY_NAME;
+                ```
+        }
+        cascadingLov {
+            parentItems: P9996_DEPT_NAME
+        }
+        layout {
+            sequence: 50
+            region: @override-grants
+            slot: regionBody
+            alignment: left
+        }
+        appearance {
+            template: @/optional-floating
+            templateOptions: #DEFAULT#
+            height: 1
+        }
+        source {
+            formRegion: @override-grants
+            column: HIRING_MGR_ID
+            dataType: number
+        }
+    )
+
+    pageItem P9996_ID (
+        type: hidden
+        layout {
+            sequence: 10
+            region: @override-grants
+            slot: regionBody
+        }
+        source {
+            formRegion: @override-grants
+            column: ID
+            dataType: number
+            queryOnly: true
+            primaryKey: true
+        }
+        security {
+            sessionStateProtection: checksumRequiredSessionLevel
+        }
+    )
+
+    pageItem P9996_IS_ACTIVE (
+        type: checkbox
+        label {
+            label: Is Active
+            alignment: left
+        }
+        settings {
+            useDefaults: false
+            checkedValue: Y
+            uncheckedValue: N
+        }
+        layout {
+            sequence: 60
+            region: @override-grants
+            slot: regionBody
+            alignment: left
+        }
+        appearance {
+            template: @/optional-floating
+            templateOptions: #DEFAULT#
+        }
+        source {
+            formRegion: @override-grants
+            column: IS_ACTIVE
+            dataType: varchar2
+        }
+    )
+
+    pageItem P9996_NOTES (
+        type: textarea
+        label {
+            label: Notes
+            alignment: right
+        }
+        layout {
+            sequence: 90
+            region: @override-grants
+            slot: regionBody
+            alignment: left
+        }
+        appearance {
+            template: @/optional-floating
+            templateOptions: #DEFAULT#
+            width: 60
+            height: 4
+        }
+        validation {
+            maxLength: 500
+        }
+        source {
+            formRegion: @override-grants
+            column: NOTES
+            dataType: varchar2
+        }
+    )
+
+    pageItem P9996_RECRUITER_ID (
+        type: selectList
+        label {
+            label: Recruiter
+            alignment: left
+        }
+        lov {
+            type: sqlQuery
+            sqlQuery:
+                ```sql
+                SELECT DISTINCT e.DISPLAY_NAME   AS display_value,
+                                req.RECRUITERID  AS return_value
+                  FROM JOB_REQUISITIONS_R req
+                  JOIN DEPARTMENTS_R d
+                    ON d.ORGANIZATIONID = req.DEPARTMENTID
+                  JOIN FBX_HCM_EMPLOYEE e
+                    ON e.PERSON_ID = req.RECRUITERID
+                 WHERE d.NAME          = :P9996_DEPT_NAME
+                   AND req.RECRUITERID IS NOT NULL
+                 ORDER BY e.DISPLAY_NAME;
+                ```
+        }
+        cascadingLov {
+            parentItems: P9996_DEPT_NAME
+        }
+        layout {
+            sequence: 40
+            region: @override-grants
+            slot: regionBody
+            alignment: left
+        }
+        appearance {
+            template: @/optional-floating
+            templateOptions: #DEFAULT#
+            height: 1
+        }
+        source {
+            formRegion: @override-grants
+            column: RECRUITER_ID
+            dataType: number
+        }
+    )
+
+    button cancel (
+        buttonName: CANCEL
+        label: Cancel
+        layout {
+            sequence: 10
+            region: @buttons
+            slot: close
+        }
+        appearance {
+            buttonTemplate: @/text
+            templateOptions: #DEFAULT#
+        }
+        behavior {
+            action: triggerAction
+        }
+
+        triggerAction native-dialog-cancel (
+            action: cancelDialog
+            execution {
+                sequence: 10
+            }
+        )
+
+    )
+
+    button create (
+        buttonName: CREATE
+        label: Create
+        layout {
+            sequence: 40
+            region: @buttons
+            slot: next
+        }
+        appearance {
+            buttonTemplate: @/text
+            hot: true
+            templateOptions: #DEFAULT#
+        }
+        behavior {
+            warnOnUnsavedChanges: doNotCheck
+            databaseAction: insert
+        }
+        serverSideCondition {
+            type: itemIsNull
+            item: P9996_ID
+        }
+    )
+
+    button delete (
+        buttonName: DELETE
+        label: Delete
+        layout {
+            sequence: 20
+            region: @buttons
+            slot: delete
+        }
+        appearance {
+            buttonTemplate: @/text
+            templateOptions: #DEFAULT#
+        }
+        behavior {
+            executeValidations: false
+            warnOnUnsavedChanges: doNotCheck
+            databaseAction: delete
+            requiresConfirmation: true
+        }
+        confirmation {
+            message: &APP_TEXT$DELETE_MSG!RAW.
+            style: danger
+        }
+        serverSideCondition {
+            type: itemIsNotNull
+            item: P9996_ID
+        }
+    )
+
+    button save (
+        buttonName: SAVE
+        label: Apply Changes
+        layout {
+            sequence: 30
+            region: @buttons
+            slot: next
+        }
+        appearance {
+            buttonTemplate: @/text
+            hot: true
+            templateOptions: #DEFAULT#
+        }
+        behavior {
+            warnOnUnsavedChanges: doNotCheck
+            databaseAction: update
+        }
+        serverSideCondition {
+            type: itemIsNotNull
+            item: P9996_ID
+        }
+    )
+
+    validation p9996-granted-ts-must-be-timestamp (
+        name: P9996_GRANTED_TS must be timestamp
+        execution {
+            sequence: 70
+        }
+        validation {
+            type: itemIsAValidTimestamp
+            item: P9996_GRANTED_TS
+        }
+        error {
+            errorMessage: #LABEL# must be a valid timestamp.
+            associatedItem: @P9996_GRANTED_TS
+        }
+    )
+
+    process close-dialog (
+        name: Close Dialog
+        type: closeDialog
+        execution {
+            sequence: 50
+        }
+        advanced {
+            executionMappingIdentifier: 155668970847726121
+        }
+        serverSideCondition {
+            type: requestIsContainedInValue
+            value: CREATE,SAVE,DELETE
+        }
+    )
+
+    process initialize-form-override-grants (
+        name: Initialize form Override Grants
+        type: formInitialization
+        formRegion: @override-grants
+        execution {
+            sequence: 10
+            point: beforeHeader
+        }
+        advanced {
+            executionMappingIdentifier: 155668139357726120
+        }
+    )
+
+    process process-form-override-grants (
+        name: Process form Override Grants
+        type: formAutoRowProcessing
+        formRegion: @override-grants
+        execution {
+            sequence: 10
+        }
+        advanced {
+            executionMappingIdentifier: 155668576611726120
+        }
+    )
+
+)
+

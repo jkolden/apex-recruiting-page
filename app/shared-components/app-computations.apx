@@ -1,0 +1,19 @@
+appComputation g-department-count (
+    itemName: G_DEPARTMENT_COUNT
+    execution {
+        sequence: 10
+        point: beforeHeader
+    }
+    computation {
+        type: sqlQuerySingleValue
+        sqlQuery:
+            ```sql
+            SELECT COUNT(DISTINCT dept_name)
+              FROM rec_dept_grant
+             WHERE app_user = UPPER(:APP_USER)
+               AND is_active = 'Y'
+            
+            ```
+    }
+)
+

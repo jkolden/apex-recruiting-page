@@ -1,0 +1,132 @@
+/* ==========================================================================
+   Candidate Phones — Inline Expand/Collapse (read-only)
+   ========================================================================== */
+
+/* --- Detail row injected below a candidate --- */
+.cphone-detail-row > td {
+    padding: 4px 8px !important;
+    background: transparent !important;
+    border: none !important;
+}
+
+.cphone-panel {
+    padding: 12px 16px 14px;
+    background: var(--ut-component-background-color, #f8f9fa);
+    border: 2px solid var(--ut-palette-success, #12b76a);
+    border-radius: 6px;
+    max-width: 400px;
+}
+
+/* --- Header --- */
+.cphone-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 8px;
+}
+
+.cphone-title {
+    font-size: 13px;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    color: var(--ut-heading-text-color, #333);
+}
+
+/* --- Phone list --- */
+.cphone-list {
+    max-height: 200px;
+    overflow-y: auto;
+}
+
+.cphone-entry {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 6px 10px;
+    border-left: 3px solid var(--ut-palette-success, #12b76a);
+    margin-bottom: 4px;
+    background: #fff;
+    border-radius: 0 4px 4px 0;
+}
+
+.cphone-type {
+    font-size: 11px;
+    font-weight: 600;
+    text-transform: uppercase;
+    color: var(--ut-component-text-muted-color, #6b7280);
+    min-width: 60px;
+}
+
+.cphone-number {
+    font-size: 13px;
+    color: var(--ut-component-text-default-color, #344054);
+}
+
+.cphone-primary {
+    font-size: 10px;
+    font-weight: 600;
+    color: var(--ut-palette-success, #12b76a);
+    border: 1px solid var(--ut-palette-success, #12b76a);
+    border-radius: 3px;
+    padding: 1px 5px;
+    margin-left: auto;
+}
+
+.cphone-empty {
+    font-size: 13px;
+    color: var(--ut-component-text-muted-color, #6b7280);
+    font-style: italic;
+    padding: 4px 0;
+}
+
+.cphone-loading {
+    padding: 12px;
+    text-align: center;
+    color: var(--ut-component-text-muted-color, #6b7280);
+}
+
+.cphone-error {
+    padding: 8px;
+    color: var(--ut-palette-danger, #d92d20);
+}
+
+/* --- Toggle button + badge --- */
+.cphone-toggle {
+    position: relative;
+    cursor: pointer;
+    background: none;
+    border: none;
+    padding: 4px 8px;
+    font-size: 16px;
+    color: var(--ut-component-text-default-color, #344054);
+}
+
+.cphone-toggle:hover {
+    color: var(--ut-palette-success, #12b76a);
+}
+
+.cphone-toggle .fa-phone.cphone-active {
+    color: var(--ut-palette-success, #12b76a);
+}
+
+.cphone-badge {
+    position: absolute;
+    top: -4px;
+    right: -2px;
+    background: var(--ut-palette-success, #12b76a);
+    color: #fff;
+    font-size: 10px;
+    font-weight: 700;
+    min-width: 16px;
+    height: 16px;
+    line-height: 16px;
+    text-align: center;
+    border-radius: 8px;
+    padding: 0 4px;
+}
+
+/* Hide badge when count is 0 */
+.cphone-badge[data-count="0"] {
+    display: none;
+}

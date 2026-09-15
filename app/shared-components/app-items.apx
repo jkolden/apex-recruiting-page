@@ -1,0 +1,24 @@
+appItem G_ASSIGNMENT_COUNT (
+    security {
+        sessionStateProtection: unrestricted
+    }
+)
+
+appItem G_DEPARTMENT_COUNT (
+    security {
+        sessionStateProtection: unrestricted
+    }
+)
+
+appItem G_LOCATION_COUNT (
+    security {
+        sessionStateProtection: unrestricted
+    }
+)
+
+appItem G_ROLE_COUNT (
+    security {
+        sessionStateProtection: unrestricted
+    }
+)
+

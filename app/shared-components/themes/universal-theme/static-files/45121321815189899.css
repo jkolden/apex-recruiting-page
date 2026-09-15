@@ -1,0 +1,28 @@
+/*!
+ Copyright (c) 2020, 2024, Oracle and/or its affiliates.
+ */
+
+/* APEX 24.2 / Oracle JET chart palette overrides (Redwood-ish) */
+:root{
+  /* Most common JET DVT variables */
+  --oj-dvt-category1-color:  #C74634; /* Oracle red */
+  --oj-dvt-category2-color:  #1B6B76; /* deep teal */
+  --oj-dvt-category3-color:  #D99A2B; /* amber */
+  --oj-dvt-category4-color:  #5B6770; /* slate */
+  --oj-dvt-category5-color:  #6E4B8B; /* purple */
+  --oj-dvt-category6-color:  #2E7D32; /* green */
+  --oj-dvt-category7-color:  #8C3A2B; /* brick */
+  --oj-dvt-category8-color:  #7A8A97; /* blue-gray */
+  --oj-dvt-category9-color:  #B23A48;
+  --oj-dvt-category10-color: #0F4C5C;
+  --oj-dvt-category11-color: #B07C2C;
+  --oj-dvt-category12-color: #3E4C59;
+
+  /* Some builds use RGB palette tokens instead (harmless to include) */
+  --oj-palette-dvt-rgb-1:  199, 70, 52;
+  --oj-palette-dvt-rgb-2:  27, 107, 118;
+  --oj-palette-dvt-rgb-3:  217, 154, 43;
+  --oj-palette-dvt-rgb-4:  91, 103, 112;
+  --oj-palette-dvt-rgb-5:  110, 75, 139;
+  --oj-palette-dvt-rgb-6:  46, 125, 50;
+}

@@ -1,0 +1,4275 @@
+page 24 (
+    name: Management Report
+    alias: MANAGEMENT-REPORT3
+    title: Management Report
+    appearance {
+        pageTemplate: @/left-side-column
+        templateOptions: #DEFAULT#
+    }
+    navigation {
+        cursorFocus: doNotFocusCursor
+        warnOnUnsavedChanges: false
+    }
+    javaScript {
+        fileUrls: [
+            #APP_FILES#app_notes_js.js
+            #APP_FILES#person_notes_js.js
+            #APP_FILES#candidate_phones_js.js
+        ]
+        functionAndGlobalVariableDeclaration:
+            ```javascript-browser
+            /* ── Drawer backdrop + inline alert (injected once on page load) ── */
+            $(function(){
+                if (!$("#drawer_backdrop").length) {
+                    $("body").append('<div id="drawer_backdrop"></div>');
+                    $("#drawer_backdrop").on("click", function(){ cancelMoveForm(); });
+                }
+                if (!$("#drawer_alert").length) {
+                    $("#move_form_region .t-Region-body").prepend(
+                        '<div id="drawer_alert" style="display:none">' +
+                        '<span class="drawer-alert-icon fa fa-exclamation-circle"></span>' +
+                        '<span class="drawer-alert-msg"></span>' +
+                        '<button type="button" class="drawer-alert-close" aria-label="Close">&times;</button>' +
+                        '</div>'
+                    );
+                    $("#drawer_alert").on("click", ".drawer-alert-close", function(){ hideDrawerAlert(); });
+                }
+            });
+            
+            function showDrawerAlert(msg) {
+                $("#drawer_alert").find(".drawer-alert-msg").text(msg);
+                $("#drawer_alert").slideDown(200);
+            }
+            function hideDrawerAlert() {
+                $("#drawer_alert").slideUp(150);
+            }
+            
+            function openMoveForm(appId) {
+                apex.server.process("GET_APP_DETAILS", {
+                    x01: appId
+                }, {
+                    success: function(data) {
+                        $s("P24_JOB_APPLICATION_ID", appId);
+                        $s("P24_CANDIDATE_DISPLAY", data.candidate_name);
+                        $s("P24_CURRENT_PHASE", data.phase);
+                        $s("P24_CURRENT_STATE", data.state);
+                        $s("P24_PHASE_ID", data.phase_id ? String(data.phase_id) : "");
+                        $s("P24_STATE_ID", "");
+                        $s("P24_COMMENTS", "");
+                        hideDrawerAlert();
+                        $("#move_form_region").addClass("is-open");
+                        $("#drawer_backdrop").addClass("is-open");
+            
+                    },
+                    error: function(jqXHR, textStatus, errorThrown) {
+                        apex.message.showErrors([{
+                            type: "error",
+                            location: "page",
+                            message: "Could not load applicant details."
+                        }]);
+                    }
+                });
+            }
+            
+            function submitMove() {
+                var appId    = $v("P24_JOB_APPLICATION_ID");
+                var phaseId  = $v("P24_PHASE_ID");
+                var stateId  = $v("P24_STATE_ID");
+                var comments = $v("P24_COMMENTS");
+            
+                if (!phaseId || !stateId) {
+                    showDrawerAlert("Please select both a Phase and a State.");
+                    return;
+                }
+            
+                hideDrawerAlert();
+                apex.server.process("MOVE_APPLICANT", {
+                    x01: appId,
+                    x02: phaseId,
+                    x03: stateId,
+                    x04: comments
+                }, {
+                    dataType: "json",
+                    success: function(data) {
+                        if (data.status === "ERROR") {
+                            showDrawerAlert(data.message || "Move failed.");
+                        } else {
+                            cancelMoveForm();
+                            apex.message.showPageSuccess("Applicant moved successfully.");
+                            apex.region("applicant_irr").refresh();
+                        }
+                    },
+                    error: function(jqXHR) {
+                        showDrawerAlert("Move failed. Please try again.");
+                    }
+                });
+            }
+            
+            function cancelMoveForm() {
+                apex.message.clearErrors();
+                hideDrawerAlert();
+                $("#move_form_region").removeClass("is-open");
+                $("#drawer_backdrop").removeClass("is-open");
+            }
+            
+            
+            /* ── Attachment Modal ── */
+            function openAttachments(appId) {
+                var $modal = $("#attachment_modal");
+                if (!$modal.length) {
+                    $("body").append(
+                        '<div id="att_backdrop" class="att-backdrop"></div>' +
+                        '<div id="attachment_modal" class="att-modal">' +
+                        '  <div class="att-modal-header">' +
+                        '    <span class="att-modal-title">Attachments</span>' +
+                        '    <button type="button" class="att-modal-close" onclick="closeAttachments()">&times;</button>' +
+                        '  </div>' +
+                        '  <div class="att-modal-body" id="att_modal_body"></div>' +
+                        '</div>'
+                    );
+                    $modal = $("#attachment_modal");
+                    $("#att_backdrop").on("click", function(){ closeAttachments(); });
+                }
+            
+                $("#att_modal_body").html(
+                    '<div class="att-loading"><span class="fa fa-refresh fa-anim-spin"></span> Loading attachments...</div>'
+                );
+                $modal.addClass("is-open");
+                $("#att_backdrop").addClass("is-open");
+            
+                apex.server.process("LIST_ATTACHMENTS", {
+                    x01: String(appId)
+                }, {
+                    dataType: "json",
+                    success: function(data) {
+                        if (data.status === "ERROR") {
+                            $("#att_modal_body").html(
+                                '<div class="att-error"><span class="fa fa-exclamation-triangle"></span> '
+                                + apex.util.escapeHTML(data.message) + '</div>'
+                            );
+                            return;
+                        }
+                        if (!data.items || data.items.length === 0) {
+                            $("#att_modal_body").html(
+                                '<div class="att-empty"><span class="fa fa-folder-o"></span> No attachments found.</div>'
+                            );
+                            return;
+                        }
+                        var html = '<table class="att-table">'
+                            + '<thead><tr><th>File</th><th>Size</th><th>Category</th><th>Date</th><th></th></tr></thead><tbody>';
+                        data.items.forEach(function(item) {
+                            var ic = getFileIcon(item.content_type, item.file_name);
+                            var url = item.download_url;
+                            html += '<tr>'
+                                + '<td><span class="fa ' + ic + ' att-file-icon"></span> '
+                                + apex.util.escapeHTML(item.file_name || item.title || "Untitled")
+                                + '</td>'
+                                + '<td class="att-size">' + formatFileSize(item.file_size) + '</td>'
+                                + '<td>' + apex.util.escapeHTML(item.category || "") + '</td>'
+                                + '<td class="att-date">'
+                                + (item.creation_date ? item.creation_date.substring(0,10) : "")
+                                + '</td>'
+                                + '<td><a href="' + url + '" target="_blank" class="t-Button t-Button--small t-Button--noUI">'
+                                + '<span class="fa fa-download"></span></a></td>'
+                                + '</tr>';
+                        });
+                        html += '</tbody></table>';
+                        $("#att_modal_body").html(html);
+                    },
+                    error: function() {
+                        $("#att_modal_body").html(
+                            '<div class="att-error"><span class="fa fa-exclamation-triangle"></span> Failed to load attachments.</div>'
+                        );
+                    }
+                });
+            }
+            
+            function closeAttachments() {
+                $("#attachment_modal").removeClass("is-open");
+                $("#att_backdrop").removeClass("is-open");
+            }
+            
+            function getFileIcon(ct, fn) {
+                ct = ct || ""; fn = fn || "";
+                var ext = fn.split(".").pop().toLowerCase();
+                if (ct.indexOf("pdf") > -1 || ext === "pdf") return "fa-file-pdf-o";
+                if (ct.indexOf("word") > -1 || ext === "doc" || ext === "docx") return "fa-file-word-o";
+                if (ct.indexOf("image") > -1) return "fa-file-image-o";
+                if (ct.indexOf("text") > -1 || ext === "txt") return "fa-file-text-o";
+                return "fa-file-o";
+            }
+            
+            function formatFileSize(bytes) {
+                if (!bytes) return "";
+                if (bytes < 1024) return bytes + " B";
+                if (bytes < 1048576) return (bytes / 1024).toFixed(0) + " KB";
+                return (bytes / 1048576).toFixed(1) + " MB";
+            }
+            
+            /* ── Ranking Drawer ── */
+            function openRankingForm(appId) {
+                apex.server.process("GET_RANKING_DETAILS", {
+                    x01: appId
+                }, {
+                    dataType: "json",
+                    success: function(data) {
+                        $s("P24_RANK_APP_ID", appId);
+                        $s("P24_RANK_CANDIDATE", data.candidate_name || "");
+                        $s("P24_RANK_SCORE", data.ranking_score ? String(data.ranking_score) : "");
+                        $s("P24_RANK_TEXT", data.ranking_text || "");
+                        $s("P24_RANK_NOTE", data.ranking_note || "");
+                        $s("P24_RANK_LAST_BY", data.ranked_by || "Not yet ranked");
+                        hideRankingAlert();
+                        $("#ranking_form_region").addClass("is-open");
+                        $("#ranking_backdrop").addClass("is-open");
+                    },
+                    error: function() {
+                        apex.message.showErrors([{type:"error",location:"page",
+                            message:"Could not load ranking details."}]);
+                    }
+                });
+            }
+            
+            function submitRanking() {
+                var appId = $v("P24_RANK_APP_ID");
+                var score = $v("P24_RANK_SCORE");
+                var text  = $v("P24_RANK_TEXT");
+                var note  = $v("P24_RANK_NOTE");
+            
+                if (!score && !text) {
+                    showRankingAlert("Please select a Score or Recommendation.");
+                    return;
+                }
+                hideRankingAlert();
+                apex.server.process("SAVE_RANKING", {
+                    x01: appId,
+                    x02: score,
+                    x03: text,
+                    x04: note
+                }, {
+                    dataType: "json",
+                    success: function(data) {
+                        if (data.status === "ERROR") {
+                            showRankingAlert(data.message || "Save failed.");
+                        } else {
+                            cancelRankingForm();
+                            apex.message.showPageSuccess("Ranking saved.");
+                            apex.region("applicant_irr").refresh();
+                        }
+                    },
+                    error: function() {
+                        showRankingAlert("Save failed. Please try again.");
+                    }
+                });
+            }
+            
+            function cancelRankingForm() {
+                apex.message.clearErrors();
+                hideRankingAlert();
+                $("#ranking_form_region").removeClass("is-open");
+                $("#ranking_backdrop").removeClass("is-open");
+            }
+            
+            /* ── Ranking drawer alert (reuses pattern from move drawer) ── */
+            $(function(){
+                if (!$("#ranking_backdrop").length) {
+                    $("body").append('<div id="ranking_backdrop"></div>');
+                    $("#ranking_backdrop").on("click", function(){ cancelRankingForm(); });
+                }
+                if (!$("#ranking_alert").length) {
+                    $("#ranking_form_region .t-Region-body").prepend(
+                        '<div id="ranking_alert" style="display:none">' +
+                        '<span class="drawer-alert-icon fa fa-exclamation-circle"></span>' +
+                        '<span class="drawer-alert-msg"></span>' +
+                        '<button type="button" class="drawer-alert-close" aria-label="Close">&times;</button>' +
+                        '</div>'
+                    );
+                    $("#ranking_alert").on("click", ".drawer-alert-close", function(){ hideRankingAlert(); });
+                }
+            });
+            function showRankingAlert(msg) {
+                $("#ranking_alert").find(".drawer-alert-msg").text(msg);
+                $("#ranking_alert").slideDown(200);
+            }
+            function hideRankingAlert() {
+                $("#ranking_alert").slideUp(150);
+            }
+            
+            /* ── Ref Correction Link Drawer ── */
+            function openRefLinkForm(appId) {
+                apex.server.process("GENERATE_REF_LINK", {
+                    x01: appId
+                }, {
+                    dataType: "json",
+                    success: function(data) {
+                        if (data.status === "ERROR") {
+                            apex.message.showErrors([{type:"error", location:"page",
+                                message: data.message || "Could not generate link."}]);
+                            return;
+                        }
+                        $s("P24_REFLINK_APP_ID", appId);
+                        $s("P24_REFLINK_CANDIDATE", data.candidate_name || "");
+                        $s("P24_REFLINK_URL", data.url || "");
+                        $s("P24_REFLINK_EMAIL", data.candidate_email || "");
+                        hideRefLinkAlert();
+                        $("#reflink_form_region").addClass("is-open");
+                        $("#reflink_backdrop").addClass("is-open");
+                    },
+                    error: function() {
+                        apex.message.showErrors([{type:"error", location:"page",
+                            message:"Could not generate correction link."}]);
+                    }
+                });
+            }
+            
+            function copyRefLink() {
+                var url = $v("P24_REFLINK_URL");
+                if (!url) {
+                    showRefLinkAlert("No link generated yet.");
+                    return;
+                }
+                navigator.clipboard.writeText(url).then(function() {
+                    apex.message.showPageSuccess("Link copied to clipboard.");
+                }).catch(function() {
+                    var el = document.getElementById("P24_REFLINK_URL_DISPLAY");
+                    if (el) {
+                        var range = document.createRange();
+                        range.selectNodeContents(el);
+                        window.getSelection().removeAllRanges();
+                        window.getSelection().addRange(range);
+                    }
+                    showRefLinkAlert("Could not copy automatically. Please select and copy the URL above.");
+                });
+            }
+            
+            function sendRefLinkEmail() {
+                var appId = $v("P24_REFLINK_APP_ID");
+                var email = $v("P24_REFLINK_EMAIL");
+                var url   = $v("P24_REFLINK_URL");
+                var note  = $v("P24_REFLINK_NOTE");
+            
+                if (!email) {
+                    showRefLinkAlert("Please enter an email address.");
+                    return;
+                }
+                if (!url) {
+                    showRefLinkAlert("No link generated yet.");
+                    return;
+                }
+                hideRefLinkAlert();
+                // Show spinner on button
+                var $btn = $("#SEND_REF_EMAIL_BTN");
+                var origLabel = $btn.find(".t-Button-label").text();
+                $btn.prop("disabled", true).find(".t-Button-label").text("Sending...");
+            
+                apex.server.process("SEND_REF_LINK_EMAIL", {
+                    x01: appId,
+                    x02: email,
+                    x03: url,
+                    x04: note
+                }, {
+                    dataType: "json",
+                    success: function(data) {
+                        $btn.prop("disabled", false).find(".t-Button-label").text(origLabel);
+                        if (data.status === "ERROR") {
+                            showRefLinkAlert(data.message || "Send failed.");
+                        } else {
+                           cancelRefLinkForm();
+                           apex.message.showPageSuccess("Email sent to " + email);
+                        }
+                    },
+                    error: function() {
+                        $btn.prop("disabled", false).find(".t-Button-label").text(origLabel);
+                        showRefLinkAlert("Send failed. Please try again.");
+                    }
+                });
+            }
+            
+            function cancelRefLinkForm() {
+                apex.message.clearErrors();
+                hideRefLinkAlert();
+                $("#reflink_form_region").removeClass("is-open");
+                $("#reflink_backdrop").removeClass("is-open");
+            }
+            
+            /* ── Ref Link drawer alert + backdrop (injected once) ── */
+            $(function(){
+                if (!$("#reflink_backdrop").length) {
+                    $("body").append('<div id="reflink_backdrop"></div>');
+                    $("#reflink_backdrop").on("click", function(){ cancelRefLinkForm(); });
+                }
+                if (!$("#reflink_alert").length) {
+                    $("#reflink_form_region .t-Region-body").prepend(
+                        '<div id="reflink_alert" style="display:none">' +
+                        '<span class="drawer-alert-icon fa fa-exclamation-circle"></span>' +
+                        '<span class="drawer-alert-msg"></span>' +
+                        '<button type="button" class="drawer-alert-close" aria-label="Close">&times;</button>' +
+                        '</div>'
+                    );
+                    $("#reflink_alert").on("click", ".drawer-alert-close", function(){ hideRefLinkAlert(); });
+                }
+            });
+            function showRefLinkAlert(msg) {
+                $("#reflink_alert").find(".drawer-alert-msg").text(msg);
+                $("#reflink_alert").slideDown(200);
+            }
+            function hideRefLinkAlert() {
+                $("#reflink_alert").slideUp(150);
+            }
+            
+            function refreshRecruiting(mode) {
+                var label = (mode === "FULL") ? "Full refresh" : "Sync";
+                var msg = label + " recruiting data (requisitions, candidates, applications)?";
+                if (mode === "FULL") {
+                    msg += "\n\nNote: Full refresh may take up to 5 minutes.";
+                }
+                apex.message.confirm(msg,
+                    function(ok) {
+                        if (!ok) return;
+            
+                        apex.message.clearErrors();
+            
+                        // Show a page-level spinner
+                        var lSpinner$ = apex.util.showSpinner();
+            
+                        apex.server.process("REFRESH_RECRUITING", {
+                            x01: mode
+                        }, {
+                            dataType: "json",
+                            timeout: 600000,
+                            success: function(data) {
+                                lSpinner$.remove();
+            
+                                if (data.status === "OK") {
+                                    apex.message.showPageSuccess(
+                                        (data.mode === "FULL" ? "Full refresh" : "Sync")
+                                        + " complete: "
+                                        + data.requisitions + " requisitions, "
+                                        + data.candidates + " candidates, "
+                                        + data.applications + " applications"
+                                    );
+                                    apex.region("applicant_irr").refresh();
+                                } else {
+                                    apex.message.showErrors([{
+                                        type: "error",
+                                        location: "page",
+                                        message: data.message
+                                    }]);
+                                }
+                            },
+                            error: function(jqXHR, textStatus, errorThrown) {
+                                lSpinner$.remove();
+                                apex.message.showErrors([{
+                                    type: "error",
+                                    location: "page",
+                                    message: "Request failed: " + errorThrown
+                                }]);
+                            }
+                        });
+                    }
+                );
+            }
+            
+            ```
+    }
+    css {
+        fileUrls: [
+            #APP_FILES#app_notes_css.css
+            #APP_FILES#person_notes_css.css
+            #APP_FILES#candidate_phones_css.css
+        ]
+        inline:
+            ```css
+            /* Uniform base width for all columns */
+            #report_table_applicant_irr th,
+            #report_table_applicant_irr td {
+                min-width: 110px;
+                max-width: 150px;
+                white-space: normal;
+                word-wrap: break-word;
+            }
+            
+            /* Name and email columns slightly wider */
+            #report_table_applicant_irr td[headers="NAME"],
+            #report_table_applicant_irr td[headers="CANDIDATENAME"],
+            #report_table_applicant_irr td[headers="HIRING_MANAGER"],
+            #report_table_applicant_irr td[headers="RECRUITER"] {
+                min-width: 160px;
+                max-width: 200px;
+            }
+            
+            /* Email columns */
+            #report_table_applicant_irr td[headers*="GCS_TEACH"] {
+                min-width: 225px;
+                max-width: 280px;
+            }
+            
+            /* ── MOVE APPLICANT DRAWER ── */
+            #move_form_region {
+                position: fixed;
+                top: 60px;
+                right: -400px;
+                width: 380px;
+                max-width: 90vw;
+                height: calc(100vh - 60px);
+                z-index: 1010;
+                background: #f7f8fa;
+                box-shadow: -4px 0 30px rgba(0,0,0,0.15);
+                overflow: hidden;
+                transition: right 0.35s cubic-bezier(0.4, 0, 0.2, 1);
+                display: flex;
+                flex-direction: column;
+            }
+            #move_form_region.is-open {
+                right: 0;
+            }
+            
+            /* ── MOVE DRAWER HEADER ── */
+            #move_form_region .t-Region-header {
+                background: #312d2a;
+                padding: 12px 20px;
+                flex-shrink: 0;
+            }
+            #move_form_region .t-Region-title {
+                color: #fff;
+                font-size: 18px;
+                font-weight: 700;
+                letter-spacing: -0.01em;
+            }
+            
+            /* ── MOVE DRAWER BODY ── */
+            #move_form_region .t-Region-body {
+                padding: 20px;
+                flex: 1;
+                overflow-y: auto;
+            }
+            
+            /* ── MOVE DRAWER BUTTON BAR ── */
+            #move_form_region .t-Region-buttons--bottom {
+                flex-shrink: 0;
+            }
+            
+            /* ── INLINE ERROR BANNER (inside drawer body) ── */
+            #drawer_alert {
+                display: none;
+                background: #fef2f2;
+                border: 1px solid #fca5a5;
+                border-radius: 8px;
+                padding: 12px 40px 12px 16px;
+                margin-bottom: 20px;
+                position: relative;
+                animation: drawerAlertIn 0.2s ease;
+            }
+            @keyframes drawerAlertIn {
+                from { opacity: 0; transform: translateY(-6px); }
+                to   { opacity: 1; transform: translateY(0); }
+            }
+            #drawer_alert .drawer-alert-icon {
+                color: #dc2626;
+                margin-right: 8px;
+                font-size: 14px;
+            }
+            #drawer_alert .drawer-alert-msg {
+                color: #991b1b;
+                font-size: 13px;
+                font-weight: 500;
+                line-height: 1.4;
+            }
+            #drawer_alert .drawer-alert-close {
+                position: absolute;
+                top: 8px;
+                right: 12px;
+                background: none;
+                border: none;
+                color: #9ca3af;
+                font-size: 18px;
+                cursor: pointer;
+                line-height: 1;
+                padding: 2px 4px;
+            }
+            #drawer_alert .drawer-alert-close:hover {
+                color: #dc2626;
+            }
+            
+            /* ── GRID ROWS ── */
+            #move_form_region .container {
+                display: flex;
+                flex-direction: column;
+                gap: 0;
+            }
+            #move_form_region .container > .row {
+                margin: 0;
+            }
+            
+            /* ── FIELD COLUMNS ── */
+            #move_form_region .container .col {
+                font-size: 11px;
+                color: #6b7280;
+                font-weight: 600;
+                text-transform: uppercase;
+                letter-spacing: 0.05em;
+                line-height: 1.4;
+                padding: 0 8px 20px 0;
+            }
+            
+            /* ── DISPLAY-ONLY VALUES ── */
+            #move_form_region .display_only {
+                display: block;
+                font-size: 15px;
+                font-weight: 600;
+                color: #111827;
+                text-transform: none;
+                letter-spacing: normal;
+                margin-top: 4px;
+                line-height: 1.4;
+            }
+            
+            /* Candidate name: hero treatment */
+            #P16_CANDIDATE_DISPLAY_DISPLAY {
+                font-size: 20px;
+                font-weight: 700;
+                color: #1b7c8a;
+                margin-top: 6px;
+            }
+            
+            /* Current phase/state: pill badges */
+            #P16_CURRENT_PHASE_DISPLAY {
+                display: inline-block;
+                background: #e8f0fe;
+                color: #1a5276;
+                border: 1px solid #bdd5ea;
+                border-radius: 3px;
+                padding: 4px 14px;
+                font-size: 13px;
+                font-weight: 600;
+                text-transform: none;
+                letter-spacing: normal;
+                margin-top: 6px;
+            }
+            #P16_CURRENT_STATE_DISPLAY {
+                display: inline-block;
+                background: #fef9e7;
+                color: #7d6608;
+                border: 1px solid #f0dca0;
+                border-radius: 3px;
+                padding: 4px 14px;
+                font-size: 13px;
+                font-weight: 600;
+                text-transform: none;
+                letter-spacing: normal;
+                margin-top: 6px;
+            }
+            
+            /* ── SEPARATOR between info and action fields ── */
+            #move_form_region .container > .row:nth-child(3) {
+                margin-top: 4px;
+                padding-top: 20px;
+                border-top: 1px solid #e5e7eb;
+            }
+            
+            /* ── Reset inherited label styles on form inputs ── */
+            #move_form_region select.selectlist,
+            #move_form_region textarea.apex-item-textarea,
+            #move_form_region .apex-item-group--textarea {
+                display: block;
+                margin-top: 5px;
+                width: 100%;
+                text-transform: none;
+                letter-spacing: normal;
+                max-height: 70px;
+            }
+            
+            /* ── BACKDROP (shared by move drawer) ── */
+            #drawer_backdrop {
+                position: fixed;
+                top: 0;
+                left: 0;
+                width: 100%;
+                height: 100%;
+                background: rgba(0,0,0,0.4);
+                z-index: 1005;
+                opacity: 0;
+                pointer-events: none;
+                transition: opacity 0.35s ease;
+                backdrop-filter: blur(2px);
+                -webkit-backdrop-filter: blur(2px);
+            }
+            #drawer_backdrop.is-open {
+                opacity: 1;
+                pointer-events: auto;
+            }
+            
+            /* ── PHASE/STATE PILLS in the IR grid ── */
+            .phase-pill {
+                display: inline-block;
+                padding: 3px 12px;
+                border-radius: 3px;
+                font-size: 12px;
+                font-weight: 600;
+                letter-spacing: 0.04em;
+                background: #e8f0fe;
+                color: #1a5276;
+                border: 1px solid #bdd5ea;
+            }
+            .state-pill {
+                display: inline-block;
+                padding: 3px 12px;
+                border-radius: 3px;
+                font-size: 12px;
+                font-weight: 600;
+                letter-spacing: 0.04em;
+                background: #fef9e7;
+                color: #7d6608;
+                border: 1px solid #f0dca0;
+            }
+            
+            /* ── RESPONSIVE ── */
+            @media (max-width: 600px) {
+                #move_form_region {
+                    width: 100vw;
+                    right: -100vw;
+                }
+                #ranking_form_region {
+                    width: 100vw;
+                    right: -100vw;
+                }
+            }
+            
+            .a-IRR-header--group {
+                background-color: #312d2a !important;
+                color: #fff !important;
+                font-size: 14px;
+                font-weight: 600;
+                padding: 10px 12px !important;
+            }
+            
+            .status-success { color: #2b7d2b; }
+            .status-error   { color: #c53030; }
+            /* Base badge */
+            .score-badge {
+                
+                font-weight: 800;
+                font-size: 16px;
+                background: #fff;
+                color: #312d2a;
+                padding: 4px;
+                border-radius: 50%;
+                /*border: 1px solid #000;*/
+            }
+            
+            .star-rating {
+                display: inline-flex;
+                align-items: center;
+                gap: 2px;
+                white-space: nowrap;
+            }
+            .sr-on {
+                color: #312d2a;
+                font-size: 16px;
+            }
+            .sr-off {
+                color: #e0dbd7;
+                font-size: 16px;
+            }
+            
+            .star-link {
+                text-decoration: none !important;
+                color: inherit !important;
+                cursor: pointer;
+            }
+            
+            
+            
+            
+            
+            
+            /* Gallup Band colors */
+            .band-hp { background: #dcfce7; color: #166534; }
+            .band-lp { background: #fef3c7; color: #92400e; }
+            .band-mp { background: #dbeafe; color: #1e40af; }
+            
+            /* Ranking display colors */
+            .rank-recommend   { background: #dcfce7; color: #166534; }
+            .rank-consider    { background: #dbeafe; color: #1e40af; }
+            .rank-donotmove   { background: #fee2e2; color: #991b1b; }
+            
+            /* Gallup score gradient: green ≥50, amber 30-49, red <30 */
+            .gscore-high { background: #dcfce7; color: #166534; }
+            .gscore-mid  { background: #fef3c7; color: #92400e; }
+            .gscore-low  { background: #fee2e2; color: #991b1b; }
+            
+            
+            .module-badge {
+                display: inline-block;
+                padding: 2px 4px;
+                border-radius: 4px;
+                font-size: 11px;
+                font-weight: 600;
+                color: #fff;
+            }
+            .module-badge--HCM { background: #3b82f6; }
+            .module-badge--FIN { background: #8b5cf6; }
+            .module-badge--GL  { background: #f59e0b; color: #1a1a1a; }
+            .module-badge--PRC { background: #22c55e; }
+            
+            /* ── RANKING DRAWER ── */
+            #ranking_form_region {
+                position: fixed;
+                top: 60px;
+                right: -540px;
+                width: 520px;
+                max-width: 90vw;
+                height: calc(100vh - 60px);
+                z-index: 1010;
+                background: #f7f8fa;
+                box-shadow: -4px 0 30px rgba(0,0,0,0.15);
+                overflow: hidden;
+                transition: right 0.35s cubic-bezier(0.4, 0, 0.2, 1);
+                display: flex;
+                flex-direction: column;
+            }
+            #ranking_form_region.is-open {
+                right: 0;
+            }
+            #ranking_form_region .t-Region-header {
+                background: #312d2a;
+                padding: 12px 20px;
+                flex-shrink: 0;
+            }
+            #ranking_form_region .t-Region-title {
+                color: #fff;
+                font-size: 18px;
+                font-weight: 700;
+                letter-spacing: -0.01em;
+            }
+            #ranking_form_region .t-Region-body {
+                padding: 20px;
+                flex: 1;
+                overflow-y: auto;
+            }
+            #ranking_form_region .t-Region-buttons--bottom {
+                flex-shrink: 0;
+            }
+            #ranking_form_region .container { display: flex; flex-direction: column; gap: 0; }
+            #ranking_form_region .container > .row { margin: 0; }
+            #ranking_form_region .container .col {
+                font-size: 11px; color: #6b7280; font-weight: 600;
+                text-transform: uppercase; letter-spacing: 0.05em;
+                line-height: 1.4; padding: 0 8px 20px 0;
+            }
+            #ranking_form_region .display_only {
+                display: block; font-size: 15px; font-weight: 600;
+                color: #111827; text-transform: none; letter-spacing: normal;
+                margin-top: 4px; line-height: 1.4;
+            }
+            #P29_RANK_CANDIDATE_DISPLAY {
+                font-size: 20px; font-weight: 700; color: #c2864a; margin-top: 6px;
+            }
+            #P29_RANK_LAST_BY_DISPLAY {
+                font-size: 13px; color: #6b7280; font-style: italic; margin-top: 4px;
+            }
+            #ranking_form_region .container > .row:nth-child(2) {
+                margin-top: 4px; padding-top: 20px; border-top: 1px solid #e5e7eb;
+            }
+            #ranking_form_region select.selectlist,
+            #ranking_form_region textarea.apex-item-textarea,
+            #ranking_form_region .apex-item-group--textarea {
+                display: block; margin-top: 5px; width: 100%;
+                text-transform: none; letter-spacing: normal;
+            }
+            #ranking_backdrop {
+                position: fixed;
+                top: 0; left: 0;
+                width: 100%; height: 100%;
+                background: rgba(0,0,0,0.4);
+                z-index: 1005;
+                opacity: 0;
+                pointer-events: none;
+                transition: opacity 0.35s ease;
+                backdrop-filter: blur(2px);
+                -webkit-backdrop-filter: blur(2px);
+            }
+            #ranking_backdrop.is-open {
+                opacity: 1;
+                pointer-events: auto;
+            }
+            #ranking_alert {
+                display: none; background: #fef2f2; border: 1px solid #fca5a5;
+                border-radius: 8px; padding: 12px 40px 12px 16px; margin-bottom: 20px;
+                position: relative; animation: drawerAlertIn 0.2s ease;
+            }
+            
+            td:has(.module-badge) {
+                white-space: nowrap;
+            }
+            
+            td[headers*="EFF_REFERENCE"], td[headers*="GCS_TEACH_REF"] {
+                min-width: 220px;
+                white-space: nowrap;
+            }
+            
+            td[headers*="APPLICATION_STATE"], td[headers*="APPLICATION_PHASE"] {
+                min-width: 220px;
+                white-space: nowrap;
+            }
+            
+            th[id*="DATE"], td[headers*="DATE"], th[headers*="REFERENCE_CHECK"], td[headers*="REFERENCE_CHECK"] {
+                min-width: 180px;
+                white-space: nowrap;
+            }
+            
+            /* ── Attachment Modal ── */
+            .att-backdrop {
+                display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%;
+                background: rgba(0,0,0,0.4); z-index: 1020;
+            }
+            .att-backdrop.is-open { display: block; }
+            .att-modal {
+                display: none; position: fixed; top: 50%; left: 50%;
+                transform: translate(-50%, -50%);
+                width: 820px; max-width: 92vw; max-height: 80vh;
+                background: #fff; border-radius: 8px; z-index: 1030;
+                box-shadow: 0 8px 32px rgba(0,0,0,0.25);
+                overflow: hidden; flex-direction: column;
+            }
+            .att-modal.is-open { display: flex; }
+            .att-modal-header {
+                display: flex; align-items: center; justify-content: space-between;
+                padding: 12px 16px;
+                background: #312d2a;
+                color: #fff;
+            }
+            .att-modal-title { font-size: 16px; font-weight: 600; }
+            .att-modal-close {
+                background: none; border: none; color: #fff; font-size: 22px; cursor: pointer;
+            }
+            .att-modal-body { padding: 16px; overflow-y: auto; }
+            .att-table { width: 100%; border-collapse: collapse; }
+            .att-table th {
+                text-align: left; padding: 6px 8px; border-bottom: 2px solid #e5e7eb;
+                font-size: 12px; color: #6b7280; text-transform: uppercase;
+            }
+            .att-table td { padding: 8px; border-bottom: 1px solid #f0f0f0; }
+            .att-file-icon { margin-right: 6px; color: #0077b6; }
+            .att-date { white-space: nowrap; color: #6b7280; }
+            .att-size { white-space: nowrap; color: #6b7280; font-size: 12px; }
+            .att-loading, .att-empty, .att-error { text-align: center; padding: 32px 16px; color: #6b7280; }
+            .att-error { color: #dc2626; }
+            .attachment-link { font-size: 16px; color: #6b7280; }
+            .attachment-link:hover { color: #0077b6; }
+            /* Compact body padding */
+            #move_form_region .t-Region-body {
+                padding: 14px 20px;
+            }
+            
+            /* Tighter spacing between fields */
+            #move_form_region .container .col {
+                padding: 0 8px 12px 0;
+            }
+            
+            /* Smaller separator gap */
+            #move_form_region .container > .row:nth-child(3) {
+                margin-top: 2px;
+                padding-top: 12px;
+            }
+            
+            /* Candidate name slightly smaller */
+            #P16_CANDIDATE_DISPLAY_DISPLAY {
+                font-size: 18px;
+                margin-top: 4px;
+            }
+            @font-face {
+              font-family: "Oracle Sans";
+              src: url("#APP_FILES#OracleBrandVF_Tb_W_WghtWdth.woff2") format("woff2");
+              font-weight: 100 900;
+              font-style: normal;
+              font-display: swap;
+            }
+            
+            .t-Report-cell,
+            .a-IRR-table td {
+              font-weight: 400;
+              font-size: 13px;
+              line-height: 1.25rem;
+            }
+            
+            /* ── REF LINK DRAWER ── */
+            #reflink_form_region {
+                position: fixed;
+                top: 60px;
+                right: -500px;
+                width: 480px;
+                max-width: 90vw;
+                height: calc(100vh - 60px);
+                z-index: 1010;
+                background: #f7f8fa;
+                box-shadow: -4px 0 30px rgba(0,0,0,0.15);
+                overflow: hidden;
+                transition: right 0.35s cubic-bezier(0.4, 0, 0.2, 1);
+                display: flex;
+                flex-direction: column;
+            }
+            #reflink_form_region.is-open {
+                right: 0;
+            }
+            #reflink_form_region .t-Region-header {
+                background: #312d2a;
+                padding: 12px 20px;
+                flex-shrink: 0;
+            }
+            #reflink_form_region .t-Region-title {
+                color: #fff;
+                font-size: 18px;
+                font-weight: 700;
+                letter-spacing: -0.01em;
+            }
+            #reflink_form_region .t-Region-body {
+                padding: 20px;
+                flex: 1;
+                overflow-y: auto;
+            }
+            #reflink_form_region .t-Region-buttons--bottom {
+                flex-shrink: 0;
+            }
+            #reflink_form_region .container { display: flex; flex-direction: column; gap: 0; }
+            #reflink_form_region .container > .row { margin: 0; }
+            #reflink_form_region .container .col {
+                font-size: 11px; color: #6b7280; font-weight: 600;
+                text-transform: uppercase; letter-spacing: 0.05em;
+                line-height: 1.4; padding: 0 8px 20px 0;
+            }
+            #reflink_form_region .display_only {
+                display: block; font-size: 15px; font-weight: 600;
+                color: #111827; text-transform: none; letter-spacing: normal;
+                margin-top: 4px; line-height: 1.4;
+            }
+            #P24_REFLINK_CANDIDATE_DISPLAY {
+                font-size: 20px; font-weight: 700; color: #2c5f2d; margin-top: 6px;
+            }
+            #P24_REFLINK_URL_DISPLAY {
+                font-size: 12px; color: #4338ca; word-break: break-all;
+                margin-top: 4px; font-family: monospace; line-height: 1.5;
+                background: #f0f0ff; padding: 8px 12px; border-radius: 6px;
+                border: 1px solid #e0e0f0;
+            }
+            #reflink_form_region .container > .row:nth-child(2) {
+                margin-top: 4px; padding-top: 20px; border-top: 1px solid #e5e7eb;
+            }
+            #reflink_form_region input.text_field {
+                display: block; margin-top: 5px; width: 100%;
+                text-transform: none; letter-spacing: normal;
+            }
+            #reflink_backdrop {
+                position: fixed;
+                top: 0; left: 0;
+                width: 100%; height: 100%;
+                background: rgba(0,0,0,0.4);
+                z-index: 1005;
+                opacity: 0;
+                pointer-events: none;
+                transition: opacity 0.35s ease;
+                backdrop-filter: blur(2px);
+                -webkit-backdrop-filter: blur(2px);
+            }
+            #reflink_backdrop.is-open {
+                opacity: 1;
+                pointer-events: auto;
+            }
+            #reflink_alert {
+                display: none; background: #fef2f2; border: 1px solid #fca5a5;
+                border-radius: 8px; padding: 12px 40px 12px 16px; margin-bottom: 20px;
+                position: relative; animation: drawerAlertIn 0.2s ease;
+            }
+            @media (max-width: 600px) {
+                #reflink_form_region { width: 100vw; right: -100vw; }
+            }
+            
+            
+            /*
+            .ref-corrected {
+                background: gray;
+                color: #fff;
+                padding: 2px 8px 2px 6px;
+                border-radius: 4px;
+                font-weight: 600;
+                font-size: 12px;
+                display: inline-block;
+                letter-spacing: 0.02em;
+            }
+            .ref-corrected::before {
+                content: '✓ ';
+                font-weight: 900;
+                font-size: 11px;
+            }
+            
+            */
+            
+            .ref-corrected {
+                border-left: 3px solid #3b82f6;
+                background: #eff6ff;
+                padding: 2px 8px;
+                font-weight: 600;
+                color: #1e40af;
+                display: inline-block;
+                border-radius: 0 4px 4px 0;
+            }
+            
+            
+            .survey-received {
+                color: #2d8659;
+                margin-left: 4px;
+                font-size: 14px;
+            }
+            .ui-dialog {
+                max-height: 85vh !important;
+                top: 10vh !important;
+            }
+            
+            /* Reference 1 columns - light blue */
+            .a-IRR-header--group[data-group="ref1"],
+            td[headers*="REF_1"] { background-color: #f0f4ff; }
+            
+            /* Reference 2 columns - light green */
+            .a-IRR-header--group[data-group="ref2"],
+            td[headers*="REF_2"] { background-color: #f0fff4; }
+            
+            /* Reference 3 columns - light orange */
+            .a-IRR-header--group[data-group="ref3"],
+            td[headers*="REF_3"] { background-color: #fff8f0; }
+            
+            td[headers="SURVEY_RESPONDENT_COUNT"] a {
+                font-size: 1.4em;
+                font-weight: bold;
+            }
+            
+            /*styles for job postings*/
+            
+            td[headers="PUBLISHED_VISIBILITY"],
+            td[headers="PUBLISHED_POSTING_STATUS"],
+            td[headers="PUBLISHED_START_DATE"],
+            td[headers="PUBLISHED_END_DATE"],
+            td[headers="PUBLISHED_TIME_ZONE"],
+            td[headers="PUBLISHED_CREATED_BY"]
+             {
+                background-color: #FFF8DC;
+            }
+            #t_Button_navControl {
+                display: none !important;
+            }
+            
+            /* Breadcrumb container */
+            #gps-breadcrumb {
+              background: #fff;
+              border: 0;
+              border-bottom: 1px solid #dfe6e2;
+              box-shadow: none;
+            }
+            
+            #gps-breadcrumb .t-ButtonRegion-wrap {
+              min-height: auto;
+              padding: 10px 24px;
+            }
+            
+            /* Remove unused columns */
+            #gps-breadcrumb .t-ButtonRegion-col--left,
+            #gps-breadcrumb .t-ButtonRegion-col--right {
+              display: none;
+            }
+            
+            /* Breadcrumb layout */
+            #gps-breadcrumb .t-Breadcrumb {
+              margin: 0;
+              padding: 0;
+            }
+            
+            /* Home link */
+            #gps-breadcrumb .t-Breadcrumb-item a.t-Breadcrumb-label,
+            #gps-breadcrumb .t-Breadcrumb-item a.t-Breadcrumb-label:visited {
+              color: #315c45;
+              font-size: 0.9375rem;
+              font-weight: 600;
+              text-decoration: none;
+            }
+            
+            #gps-breadcrumb .t-Breadcrumb-item a.t-Breadcrumb-label:hover {
+              color: #244735;
+              text-decoration: underline;
+            }
+            
+            /* Current page */
+            #gps-breadcrumb .t-Breadcrumb-item.is-active .t-Breadcrumb-label {
+              margin: 0;
+              color: #1f2933;
+              font-size: 0.9375rem;
+              font-weight: 700;
+              line-height: 1.4;
+            }
+            
+            /* Divider between breadcrumb items */
+            #gps-breadcrumb .t-Breadcrumb-item::after {
+              color: #a5afa9;
+              font-weight: 400;
+            }
+            
+            #refresh_recruiting_data {
+                background: transparent !important;
+                color: #404040 !important;
+                border: 1px solid #ccc !important;
+            }
+            #refresh_recruiting_data:hover {
+                background: #f0f0f0 !important;
+            }
+            
+            
+            ```
+    }
+    security {
+        pageAccessProtection: argumentsMustHaveChecksum
+        formAutoComplete: false
+    }
+    comments {
+        comments:
+            ```
+            -- =============================================================================
+            -- REFERENCE CORRECTION LINK FEATURE (added 2026-05-15)
+            -- =============================================================================
+            -- Adds a "Send Correction Link" drawer to the Management Report, allowing
+            -- admins to generate a secure one-time URL and email it to applicants so they
+            -- can correct their reference contact information (name, phone, email × 3 refs).
+            --
+            -- Components added to this page:
+            --   - JavaScript: openRefLinkForm(), copyRefLink(), sendRefLinkEmail(),
+            --     cancelRefLinkForm(), plus alert/backdrop injection on page load
+            --   - CSS: #reflink_form_region drawer, #reflink_backdrop overlay
+            --   - IR column: REF_LINK_ACTION (envelope icon per row, green check if corrected)
+            --   - IR columns (hidden): REFS_CORRECTED_YN, REFS_CORRECTED_ON
+            --   - Region: reflink_form_region (slide-out drawer, Standard template)
+            --   - Items: P24_REFLINK_APP_ID (hidden), P24_REFLINK_CANDIDATE (display),
+            --     P24_REFLINK_URL (display), P24_REFLINK_EMAIL (text field)
+            --   - Buttons: COPY_REF_LINK_BTN, SEND_REF_EMAIL_BTN, CANCEL_REFLINK_BTN
+            --   - Dynamic Actions: click handlers for each button
+            --   - Ajax Callbacks: GENERATE_REF_LINK (pkg_ref_correction.generate_token),
+            --     SEND_REF_LINK_EMAIL (pkg_ref_correction.send_correction_email)
+            --
+            -- Dependencies:
+            --   - Tables: ref_correction_token, ref_correction
+            --   - Package: pkg_ref_correction (generate_token, validate_token,
+            --     save_corrections, send_correction_email, get_candidate_email)
+            --   - View: RECRUITING_REPORT_V (COALESCE overlay for corrected refs,
+            --     REFS_CORRECTED_YN/REFS_CORRECTED_ON columns)
+            --   - Config: email_config row APEX_BASE_URL
+            --   - Public page 100 (alias REF-CORRECT): applicant-facing correction form
+            -- =============================================================================
+            
+            ```
+    }
+
+    region breadcrumb (
+        name: breadcrumb
+        type: breadcrumb
+        source {
+            breadcrumb: @breadcrumb
+        }
+        layout {
+            sequence: 60
+            slot: breadcrumbBar
+        }
+        appearance {
+            template: @/buttons-container
+            templateOptions: #DEFAULT#
+        }
+        advanced {
+            htmlDomId: gps-breadcrumb
+        }
+        componentAppearance {
+            breadcrumbTemplate: @/breadcrumb
+            templateOptions: #DEFAULT#
+        }
+    )
+
+    region button-bar (
+        name: Button Bar
+        type: staticContent
+        source {
+            htmlCode: <div id="active_facets"></div>
+        }
+        layout {
+            sequence: 10
+            slot: body
+        }
+        appearance {
+            template: @/buttons-container
+            templateOptions: [
+                #DEFAULT#
+                t-ButtonRegion--noPadding
+                t-ButtonRegion--noUI
+            ]
+        }
+    )
+
+    region menu-list (
+        name: Menu List
+        type: list
+        source {
+            list: @recruiting-rest-refresh-options
+        }
+        layout {
+            sequence: 60
+            slot: body
+        }
+        appearance {
+            template: @/blank-with-attributes
+            templateOptions: #DEFAULT#
+        }
+        advanced {
+            htmlDomId: MENU-LIST
+        }
+        componentAppearance {
+            listTemplate: @/menu-popup
+            templateOptions: #DEFAULT#
+        }
+    )
+
+    region move-applicant (
+        name: Move Applicant
+        type: staticContent
+        layout {
+            sequence: 30
+            slot: body
+        }
+        appearance {
+            template: @/standard
+            templateOptions: [
+                #DEFAULT#
+                t-Region--scrollBody
+            ]
+        }
+        advanced {
+            htmlDomId: move_form_region
+        }
+    )
+
+    region rank-applicant (
+        name: Rank Applicant
+        type: staticContent
+        layout {
+            sequence: 40
+            slot: body
+        }
+        appearance {
+            template: @/standard
+            templateOptions: [
+                #DEFAULT#
+                t-Region--scrollBody
+            ]
+        }
+        advanced {
+            htmlDomId: ranking_form_region
+        }
+    )
+
+    region search (
+        name: Search
+        type: facetedSearch
+        source {
+            filteredRegion: @search-results
+        }
+        layout {
+            sequence: 10
+            slot: leftColumn
+        }
+        appearance {
+            template: @/standard
+            templateOptions: [
+                #DEFAULT#
+                t-Region--noPadding
+                t-Region--hideHeader js-addHiddenHeadingRoleDesc
+                t-Region--scrollBody
+            ]
+        }
+        accessibility {
+            landmarkLabel: Filters
+        }
+        settings {
+            batchFacetChanges: true
+            compactNosThreshold: 10000
+            showCurrentFacets: selector
+            currentFacetsSelector: #active_facets
+            showTotalRowCount: true
+            displayChartForTopNValues: 10
+        }
+
+        facet P24_APPLICATION_PHASE (
+            type: checkboxGroup
+            label {
+                label: Application Phase
+            }
+            lov {
+                type: distinctValues
+            }
+            layout {
+                sequence: 80
+            }
+            listEntries {
+                maxDisplayedEntries: 7
+            }
+            source {
+                databaseColumn: APPLICATION_PHASE
+            }
+        )
+
+        facet P24_DEPARTMENT_NAME (
+            type: checkboxGroup
+            label {
+                label: Department Name
+            }
+            lov {
+                type: distinctValues
+            }
+            layout {
+                sequence: 60
+            }
+            listEntries {
+                maxDisplayedEntries: 7
+            }
+            source {
+                databaseColumn: DEPARTMENT_NAME
+            }
+        )
+
+        facet P24_HIRING_MANAGER (
+            type: checkboxGroup
+            label {
+                label: Hiring Manager
+            }
+            lov {
+                type: distinctValues
+            }
+            layout {
+                sequence: 70
+            }
+            listEntries {
+                maxDisplayedEntries: 7
+            }
+            source {
+                databaseColumn: HIRING_MANAGER
+            }
+        )
+
+        facet P24_JOB (
+            type: checkboxGroup
+            label {
+                label: Job
+            }
+            lov {
+                type: distinctValues
+            }
+            layout {
+                sequence: 40
+            }
+            listEntries {
+                maxDisplayedEntries: 7
+            }
+            source {
+                databaseColumn: JOB
+            }
+        )
+
+        facet P24_NAME (
+            type: checkboxGroup
+            label {
+                label: Name
+            }
+            lov {
+                type: distinctValues
+            }
+            layout {
+                sequence: 90
+            }
+            listEntries {
+                sortByTopCounts: false
+                maxDisplayedEntries: 7
+            }
+            source {
+                databaseColumn: NAME
+            }
+        )
+
+        facet P24_PUBLISHED_POSTING_STATUS (
+            type: checkboxGroup
+            label {
+                label: Published Posting Status
+            }
+            lov {
+                type: distinctValues
+            }
+            layout {
+                sequence: 20
+            }
+            listEntries {
+                maxDisplayedEntries: 7
+            }
+            source {
+                databaseColumn: PUBLISHED_POSTING_STATUS
+            }
+        )
+
+        facet P24_REQUISITION (
+            type: checkboxGroup
+            label {
+                label: Requisition
+            }
+            lov {
+                type: sqlQuery
+                sqlQuery:
+                    ```sql
+                    SELECT 
+                        REQ || ' - ' || JOB 
+                        || ' | ' || NVL(SCHOOL, 'No Location')
+                        || ' | Mgr: ' || NVL(HIRING_MANAGER, '--')
+                        || ' | ' || REQ_STATE || ' - ' || POSTING_SUMMARY
+                        AS display_value,
+                        JOB_REQUISITION_ID AS return_value
+                    FROM RECRUITING_REPORT_V
+                    GROUP BY JOB_REQUISITION_ID, REQ, JOB, POSITION_NAME, 
+                             SCHOOL, HIRING_MANAGER, RECRUITER, REQ_STATE, POSTING_SUMMARY
+                    ORDER BY to_number(REQ)
+                    
+                    
+                    ```
+            }
+            layout {
+                sequence: 30
+            }
+            listEntries {
+                sortByTopCounts: false
+                maxDisplayedEntries: 7
+            }
+            source {
+                databaseColumn: JOB_REQUISITION_ID
+            }
+        )
+
+        facet P24_SCHOOL (
+            type: checkboxGroup
+            label {
+                label: School
+            }
+            lov {
+                type: distinctValues
+            }
+            layout {
+                sequence: 50
+            }
+            listEntries {
+                maxDisplayedEntries: 7
+            }
+            source {
+                databaseColumn: SCHOOL
+            }
+        )
+
+        facet P24_SEARCH (
+            type: search
+            label {
+                label: Search
+            }
+            layout {
+                sequence: 10
+            }
+            source {
+                dbColumns: GCS_TEACH_REF_1_NAME,GCS_TEACH_REF_2_NAME,GCS_TEACH_REF_3_NAME,REQ,JOB,SCHOOL,NAME,INTEXT,EE_NUM,HIRING_MANAGER,APPLICATION_PHASE,APPLICATION_STATE,REHIRE_ELIGIBLE,REFERENCE_CHECK,EFF_REFERENCE_1_NAME,EFF_REFERENCE_1_EMAIL,EFF_REFERENCE_2_NAME,EFF_REFERENCE_2_EMAIL,EFF_REFERENCE_3_NAME,EFF_REFERENCE_3_EMAIL,BACKGROUND_CHECK,CERTIFICATION,ASSESSMENT_SCORE,TEACHER_SUBJECT_AREA,EFF_EFFECTIVE_DATE,TRANSFER_COORDINATED,VACANCY_TERM_SUBMITTED,GCS_TEACH_REF_1_NAME,GCS_TEACH_REF_1_PHONE,GCS_TEACH_REF_1_EMAIL,GCS_TEACH_REF_2_NAME,GCS_TEACH_REF_2_PHONE,GCS_TEACH_REF_2_EMAIL,GCS_TEACH_REF_3_NAME,GCS_TEACH_REF_3_PHONE,GCS_TEACH_REF_3_EMAIL,GALLUP_BAND,GALLUP_STATUS,RANKING_TEXT,RANKING_NOTE,RANKED_BY,RANKING_DISPLAY,ATTACHMENTS
+            }
+        )
+
+    )
+
+    region search-results (
+        name: Search Results
+        type: classicReport
+        source {
+            location: localDatabase
+            type: sqlQuery
+            sqlQuery:
+                ```sql
+                SELECT
+                null APP_NOTES_TOGGLE,
+                note_count,
+                APPLICANT_NOTE_COUNT,
+                null person_notes_toggle,
+                PHONE_COUNT,
+                CAND_NUM ,
+                working_retiree,
+                sc_retirement_date,
+                    JOB_REQUISITION_ID,
+                    JOB_APPLICATION_ID,
+                    REQ,
+                    JOB,
+                    SCHOOL,
+                    DEPARTMENT_NAME ,
+                    LOCATION_CODE,
+                    NAME,
+                    CANDIDATE_NUMBER,
+                    INTEXT,
+                    EE_NUM,
+                    HIRING_MANAGER,
+                    recruiter,
+                    APPLICATION_PHASE,
+                    APPLICATION_STATE,
+                    APPLICATION_DATE,
+                    REHIRE_ELIGIBLE,
+                    REFERENCE_CHECK,
+                    BACKGROUND_CHECK,
+                    CERTIFICATION,
+                    ASSESSMENT_SCORE,
+                    TEACHER_SUBJECT_AREA,
+                    TO_CHAR(
+                    TO_TIMESTAMP_TZ(EFF_EFFECTIVE_DATE, 'YYYY-MM-DD"T"HH24:MI:SS.FF3TZH:TZM'),
+                    'DD-MON-YYYY'
+                ) AS EFF_EFFECTIVE_DATE,
+                    TRANSFER_COORDINATED,
+                    VACANCY_TERM_SUBMITTED,
+                    PUBLISHED_VISIBILITY,
+                    PUBLISHED_POSTING_STATUS,
+                    PUBLISHED_START_DATE,
+                    PUBLISHED_END_DATE,
+                    PUBLISHED_TIME_ZONE,
+                    PUBLISHED_CREATED_BY,
+                    CASE WHEN REF_1_NAME_CHG = 'Y'
+                     THEN '<span class="ref-corrected">' || GCS_TEACH_REF_1_NAME || '</span>'
+                     ELSE GCS_TEACH_REF_1_NAME
+                END
+                || CASE WHEN REF_1_SURVEY_YN = 'Y' AND GCS_TEACH_REF_1_NAME IS NOT NULL
+                     THEN ' <span class="fa fa-check-circle survey-received" title="Survey response received"></span>'
+                     ELSE '' END AS GCS_TEACH_REF_1_NAME,
+                
+                
+                CASE WHEN REF_2_NAME_CHG = 'Y'
+                     THEN '<span class="ref-corrected">' || GCS_TEACH_REF_2_NAME || '</span>'
+                     ELSE GCS_TEACH_REF_2_NAME
+                END
+                || CASE WHEN REF_2_SURVEY_YN = 'Y' AND GCS_TEACH_REF_2_NAME IS NOT NULL
+                     THEN ' <span class="fa fa-check-circle survey-received" title="Survey response received"></span>'
+                     ELSE '' END AS GCS_TEACH_REF_2_NAME,
+                
+                
+                CASE WHEN REF_3_NAME_CHG = 'Y'
+                     THEN '<span class="ref-corrected">' || GCS_TEACH_REF_3_NAME || '</span>'
+                     ELSE GCS_TEACH_REF_3_NAME
+                END
+                || CASE WHEN REF_3_SURVEY_YN = 'Y' AND GCS_TEACH_REF_3_NAME IS NOT NULL
+                     THEN ' <span class="fa fa-check-circle survey-received" title="Survey response received"></span>'
+                     ELSE '' END AS GCS_TEACH_REF_3_NAME,
+                
+                
+                
+                CASE WHEN REF_1_PHONE_CHG = 'Y'
+                     THEN '<span class="ref-corrected">' || GCS_TEACH_REF_1_PHONE || '</span>'
+                     ELSE GCS_TEACH_REF_1_PHONE
+                END AS GCS_TEACH_REF_1_PHONE,
+                CASE WHEN REF_1_EMAIL_CHG = 'Y'
+                     THEN '<span class="ref-corrected">' || GCS_TEACH_REF_1_EMAIL || '</span>'
+                     ELSE GCS_TEACH_REF_1_EMAIL
+                END AS GCS_TEACH_REF_1_EMAIL,
+                
+                CASE WHEN REF_2_PHONE_CHG = 'Y'
+                     THEN '<span class="ref-corrected">' || GCS_TEACH_REF_2_PHONE || '</span>'
+                     ELSE GCS_TEACH_REF_2_PHONE
+                END AS GCS_TEACH_REF_2_PHONE,
+                CASE WHEN REF_2_EMAIL_CHG = 'Y'
+                     THEN '<span class="ref-corrected">' || GCS_TEACH_REF_2_EMAIL || '</span>'
+                     ELSE GCS_TEACH_REF_2_EMAIL
+                END AS GCS_TEACH_REF_2_EMAIL,
+                
+                CASE WHEN REF_3_PHONE_CHG = 'Y'
+                     THEN '<span class="ref-corrected">' || GCS_TEACH_REF_3_PHONE || '</span>'
+                     ELSE GCS_TEACH_REF_3_PHONE
+                END AS GCS_TEACH_REF_3_PHONE,
+                CASE WHEN REF_3_EMAIL_CHG = 'Y'
+                     THEN '<span class="ref-corrected">' || GCS_TEACH_REF_3_EMAIL || '</span>'
+                     ELSE GCS_TEACH_REF_3_EMAIL
+                END AS GCS_TEACH_REF_3_EMAIL,
+                GCS_TEACH_REF_1_REL ,
+                GCS_TEACH_REF_2_REL,
+                GCS_TEACH_REF_3_REL,
+                
+                
+                    GALLUP_SCORE,
+                    GALLUP_BAND,
+                    GALLUP_STATUS,
+                    GALLUP_RESULT_URL,
+                    RANKING_SCORE,
+                    RANKING_TEXT,
+                    RANKING_NOTE,
+                    RANKED_BY,
+                    CASE WHEN RANKING_TEXT IS NOT NULL THEN RANKING_TEXT
+                         WHEN RANKING_SCORE IS NOT NULL THEN 'Score: ' || RANKING_SCORE
+                         ELSE '--'
+                    END AS RANKING_DISPLAY,
+                    '<a href="javascript:void(0);" onclick="openAttachments('
+                || JOB_APPLICATION_ID || ');return false;" '
+                || 'class="attachment-link" title="View Attachments">'
+                || '<span class="fa fa-paperclip"></span></a>' AS ATTACHMENTS,
+                
+                    /* -- CSS class columns (hidden in report, used by HTML Expressions) -- */
+                    CASE WHEN GALLUP_SCORE >= 50 THEN 'gscore-high'
+                         WHEN GALLUP_SCORE >= 30 THEN 'gscore-mid'
+                         ELSE 'gscore-low'
+                    END AS GALLUP_SCORE_CLASS,
+                    LOWER(GALLUP_BAND) AS GALLUP_BAND_LC,
+                    CASE WHEN RANKING_TEXT = 'Recommend'   THEN 'recommend'
+                         WHEN RANKING_TEXT = 'Consider'    THEN 'consider'
+                         WHEN RANKING_TEXT = 'Do Not Move' THEN 'donotmove'
+                         ELSE ''
+                    END AS RANKING_CSS,
+                
+                    REFS_CORRECTED_YN,
+                    REFS_CORRECTED_ON,
+                    REQUESTED_BY,
+                    '<button type="button" class="t-Button t-Button--tiny t-Button--link"'
+                ||' onclick="openRefLinkForm('||JOB_APPLICATION_ID||');return false;"'
+                ||' title="Send Reference Correction Link">'
+                || CASE WHEN REFS_CORRECTED_YN = 'Y' THEN '<span class="fa fa-envelope-o fa-2x fam-check fam-is-success"></span>'
+                          ELSE '<span class="fa fa-envelope-o"></span>' END
+                ||'</button>' AS REF_LINK_ACTION,
+                
+                SURVEY_PERSON_ID AS HRD2_CANDIDATE_ID,
+                SURVEY_RESPONDENT_COUNT,
+                REF_1_SURVEY_YN,
+                REF_2_SURVEY_YN,
+                REF_3_SURVEY_YN
+                
+                
+                
+                FROM RECRUITING_REPORT_V
+                
+                ```
+        }
+        layout {
+            sequence: 20
+            slot: body
+        }
+        appearance {
+            template: @/standard
+            templateOptions: [
+                #DEFAULT#
+                t-Region--noPadding
+                t-Region--hideHeader js-addHiddenHeadingRoleDesc
+                t-Region--scrollBody
+            ]
+        }
+        advanced {
+            htmlDomId: applicant_irr
+        }
+        reportLayout {
+            numberOfRows: 50
+        }
+        componentAppearance {
+            template: @/standard
+            templateOptions: [
+                #DEFAULT#
+                t-Report--stretch
+                t-Report--staticRowColors
+                t-Report--rowHighlight
+                t-Report--inline
+                t-Report--hideNoPagination
+            ]
+        }
+        pagination {
+            type: nextAndPreviousLinks
+        }
+        performance {
+            lazyLoading: true
+            maxRowsToProcess: 100000
+        }
+        messages {
+            whenNoDataFound: no data found
+        }
+
+        column APPLICANT_NOTE_COUNT (
+            reportColumnQueryId: 3
+            derivedColumn: N
+            type: hidden
+            layout {
+                sequence: 75
+            }
+        )
+
+        column APPLICATION_DATE (
+            reportColumnQueryId: 24
+            derivedColumn: N
+            type: hidden
+            layout {
+                sequence: 135
+            }
+        )
+
+        column APPLICATION_PHASE (
+            reportColumnQueryId: 22
+            derivedColumn: N
+            heading {
+                heading: Application Phase
+                alignment: center
+            }
+            layout {
+                sequence: 115
+                columnAlignment: center
+            }
+            sorting {
+                defaultSequence: 1
+            }
+        )
+
+        column APPLICATION_STATE (
+            reportColumnQueryId: 23
+            derivedColumn: N
+            type: link
+            heading {
+                heading: Application State
+                alignment: center
+            }
+            layout {
+                sequence: 125
+                columnAlignment: center
+            }
+            link {
+                target: {
+                    type: url
+                    url: javascript:openMoveForm(#JOB_APPLICATION_ID#);void(0);
+                }
+                linkText: #APPLICATION_STATE#
+            }
+            sorting {
+                defaultSequence: 1
+            }
+            security {
+                escapeSpecialChars: false
+            }
+        )
+
+        column APP_NOTES_TOGGLE (
+            reportColumnQueryId: 1
+            derivedColumn: N
+            heading {
+                heading: Application Notes
+                alignment: center
+            }
+            layout {
+                sequence: 63
+                columnAlignment: center
+            }
+            columnFormatting {
+                htmlExpression:
+                    ```html
+                    <button type="button" class="appnote-toggle"
+                            data-app-id="#JOB_APPLICATION_ID#"
+                            aria-label="Application Notes">
+                      <span class="fa fa-comment-o"></span>
+                      <span class="appnote-badge" data-count="#NOTE_COUNT#">#NOTE_COUNT#</span>
+                    </button>
+                    
+                    ```
+            }
+        )
+
+        column ASSESSMENT_SCORE (
+            reportColumnQueryId: 29
+            derivedColumn: N
+            heading {
+                heading: Assessment Score
+                alignment: center
+            }
+            layout {
+                sequence: 185
+                columnAlignment: center
+            }
+            columnFormatting {
+                htmlExpression:
+                    ```html
+                    {if ASSESSMENT_SCORE/}<span class="score-badge">#ASSESSMENT_SCORE#</span>{endif/}
+                    
+                    ```
+            }
+            sorting {
+                defaultSequence: 1
+            }
+        )
+
+        column ATTACHMENTS (
+            reportColumnQueryId: 61
+            derivedColumn: N
+            heading {
+                heading: Attachments
+                alignment: center
+            }
+            layout {
+                sequence: 545
+                columnAlignment: center
+            }
+            sorting {
+                defaultSequence: 1
+            }
+            security {
+                escapeSpecialChars: false
+            }
+        )
+
+        column BACKGROUND_CHECK (
+            reportColumnQueryId: 27
+            derivedColumn: N
+            heading {
+                heading: Background Check
+                alignment: center
+            }
+            layout {
+                sequence: 165
+                columnAlignment: center
+            }
+            sorting {
+                defaultSequence: 1
+            }
+        )
+
+        column CANDIDATE_NUMBER (
+            reportColumnQueryId: 17
+            derivedColumn: N
+            type: hidden
+            layout {
+                sequence: 615
+            }
+        )
+
+        column CAND_NUM (
+            reportColumnQueryId: 6
+            derivedColumn: N
+            type: hidden
+            layout {
+                sequence: 675
+            }
+        )
+
+        column CERTIFICATION (
+            reportColumnQueryId: 28
+            derivedColumn: N
+            heading {
+                heading: Certification
+                alignment: center
+            }
+            layout {
+                sequence: 175
+                columnAlignment: center
+            }
+            sorting {
+                defaultSequence: 1
+            }
+        )
+
+        column DEPARTMENT_NAME (
+            reportColumnQueryId: 14
+            derivedColumn: N
+            heading {
+                heading: Department Name
+            }
+            layout {
+                sequence: 25
+            }
+        )
+
+        column EE_NUM (
+            reportColumnQueryId: 19
+            derivedColumn: N
+            heading {
+                heading: EE Number
+                alignment: center
+            }
+            layout {
+                sequence: 95
+                columnAlignment: center
+            }
+            sorting {
+                defaultSequence: 1
+            }
+        )
+
+        column EFF_EFFECTIVE_DATE (
+            reportColumnQueryId: 31
+            derivedColumn: N
+            heading {
+                heading: EFF Effective Date
+                alignment: center
+            }
+            layout {
+                sequence: 205
+            }
+            sorting {
+                defaultSequence: 1
+            }
+        )
+
+        column GALLUP_BAND (
+            reportColumnQueryId: 53
+            derivedColumn: N
+            heading {
+                heading: Gallup Band
+                alignment: center
+            }
+            layout {
+                sequence: 455
+                columnAlignment: center
+            }
+            sorting {
+                defaultSequence: 1
+            }
+        )
+
+        column GALLUP_BAND_LC (
+            reportColumnQueryId: 63
+            derivedColumn: N
+            type: hidden
+            layout {
+                sequence: 565
+            }
+        )
+
+        column GALLUP_RESULT_URL (
+            reportColumnQueryId: 55
+            derivedColumn: N
+            heading {
+                heading: Gallup Result URL
+                alignment: center
+            }
+            layout {
+                sequence: 475
+            }
+            columnFormatting {
+                htmlExpression:
+                    ```html
+                    {if GALLUP_RESULT_URL/}<a href="#GALLUP_RESULT_URL#" target="_blank">Gallup Result</a>{endif/}
+                    
+                    ```
+            }
+        )
+
+        column GALLUP_SCORE (
+            reportColumnQueryId: 52
+            derivedColumn: N
+            heading {
+                heading: Gallup Score
+                alignment: center
+            }
+            layout {
+                sequence: 445
+                columnAlignment: center
+            }
+            columnFormatting {
+                htmlExpression:
+                    ```html
+                    {if GALLUP_SCORE/}<span class="score-badge">#GALLUP_SCORE#</span>{endif/}
+                    
+                    ```
+            }
+        )
+
+        column GALLUP_SCORE_CLASS (
+            reportColumnQueryId: 62
+            derivedColumn: N
+            type: hidden
+            layout {
+                sequence: 555
+            }
+        )
+
+        column GALLUP_STATUS (
+            reportColumnQueryId: 54
+            derivedColumn: N
+            type: hidden
+            layout {
+                sequence: 465
+            }
+            sorting {
+                defaultSequence: 1
+            }
+        )
+
+        column GCS_TEACH_REF_1_EMAIL (
+            reportColumnQueryId: 44
+            derivedColumn: N
+            heading {
+                heading: Reference 1 Email
+                alignment: center
+            }
+            layout {
+                sequence: 275
+            }
+            sorting {
+                defaultSequence: 1
+            }
+            security {
+                escapeSpecialChars: false
+            }
+        )
+
+        column GCS_TEACH_REF_1_NAME (
+            reportColumnQueryId: 40
+            derivedColumn: N
+            heading {
+                heading: Reference 1
+                alignment: center
+            }
+            layout {
+                sequence: 255
+            }
+            sorting {
+                defaultSequence: 1
+            }
+            security {
+                escapeSpecialChars: false
+            }
+        )
+
+        column GCS_TEACH_REF_1_PHONE (
+            reportColumnQueryId: 43
+            derivedColumn: N
+            heading {
+                heading: Reference 1 Phone
+                alignment: center
+            }
+            layout {
+                sequence: 265
+            }
+            sorting {
+                defaultSequence: 1
+            }
+            security {
+                escapeSpecialChars: false
+            }
+        )
+
+        column GCS_TEACH_REF_1_REL (
+            reportColumnQueryId: 49
+            derivedColumn: N
+            heading {
+                heading: Reference 1 Relationship
+                alignment: center
+            }
+            layout {
+                sequence: 285
+            }
+        )
+
+        column GCS_TEACH_REF_2_EMAIL (
+            reportColumnQueryId: 46
+            derivedColumn: N
+            heading {
+                heading: Reference 2 Email
+                alignment: center
+            }
+            layout {
+                sequence: 315
+            }
+            sorting {
+                defaultSequence: 1
+            }
+            security {
+                escapeSpecialChars: false
+            }
+        )
+
+        column GCS_TEACH_REF_2_NAME (
+            reportColumnQueryId: 41
+            derivedColumn: N
+            heading {
+                heading: Reference 2
+                alignment: center
+            }
+            layout {
+                sequence: 295
+            }
+            sorting {
+                defaultSequence: 1
+            }
+            security {
+                escapeSpecialChars: false
+            }
+        )
+
+        column GCS_TEACH_REF_2_PHONE (
+            reportColumnQueryId: 45
+            derivedColumn: N
+            heading {
+                heading: Reference 2 Phone
+                alignment: center
+            }
+            layout {
+                sequence: 305
+            }
+            sorting {
+                defaultSequence: 1
+            }
+            security {
+                escapeSpecialChars: false
+            }
+        )
+
+        column GCS_TEACH_REF_2_REL (
+            reportColumnQueryId: 50
+            derivedColumn: N
+            heading {
+                heading: Reference 2 Relationship
+                alignment: center
+            }
+            layout {
+                sequence: 325
+            }
+        )
+
+        column GCS_TEACH_REF_3_EMAIL (
+            reportColumnQueryId: 48
+            derivedColumn: N
+            heading {
+                heading: Reference 3 Email
+                alignment: center
+            }
+            layout {
+                sequence: 355
+            }
+            sorting {
+                defaultSequence: 1
+            }
+            security {
+                escapeSpecialChars: false
+            }
+        )
+
+        column GCS_TEACH_REF_3_NAME (
+            reportColumnQueryId: 42
+            derivedColumn: N
+            heading {
+                heading: Reference 3
+                alignment: center
+            }
+            layout {
+                sequence: 335
+            }
+            sorting {
+                defaultSequence: 1
+            }
+            security {
+                escapeSpecialChars: false
+            }
+        )
+
+        column GCS_TEACH_REF_3_PHONE (
+            reportColumnQueryId: 47
+            derivedColumn: N
+            heading {
+                heading: Reference 3 Phone
+                alignment: center
+            }
+            layout {
+                sequence: 345
+            }
+            sorting {
+                defaultSequence: 1
+            }
+            security {
+                escapeSpecialChars: false
+            }
+        )
+
+        column GCS_TEACH_REF_3_REL (
+            reportColumnQueryId: 51
+            derivedColumn: N
+            heading {
+                heading: Reference 3 Relationship
+                alignment: center
+            }
+            layout {
+                sequence: 365
+            }
+        )
+
+        column HIRING_MANAGER (
+            reportColumnQueryId: 20
+            derivedColumn: N
+            heading {
+                heading: Hiring Manager
+                alignment: center
+            }
+            layout {
+                sequence: 105
+            }
+            sorting {
+                defaultSequence: 1
+            }
+        )
+
+        column HRD2_CANDIDATE_ID (
+            reportColumnQueryId: 69
+            derivedColumn: N
+            type: hidden
+            layout {
+                sequence: 625
+            }
+        )
+
+        column INTEXT (
+            reportColumnQueryId: 18
+            derivedColumn: N
+            heading {
+                heading: Intext
+            }
+            layout {
+                sequence: 85
+            }
+            sorting {
+                defaultSequence: 1
+            }
+        )
+
+        column JOB (
+            reportColumnQueryId: 12
+            derivedColumn: N
+            heading {
+                heading: Job
+                alignment: center
+            }
+            layout {
+                sequence: 4
+            }
+            sorting {
+                defaultSequence: 1
+            }
+        )
+
+        column JOB_APPLICATION_ID (
+            reportColumnQueryId: 10
+            derivedColumn: N
+            type: hidden
+            layout {
+                sequence: 2
+            }
+        )
+
+        column JOB_REQUISITION_ID (
+            reportColumnQueryId: 9
+            derivedColumn: N
+            type: hidden
+            layout {
+                sequence: 1
+            }
+        )
+
+        column LOCATION_CODE (
+            reportColumnQueryId: 15
+            derivedColumn: N
+            heading {
+                heading: Location Code
+                alignment: center
+            }
+            layout {
+                sequence: 15
+                columnAlignment: center
+            }
+        )
+
+        column NAME (
+            reportColumnQueryId: 16
+            derivedColumn: N
+            heading {
+                heading: Name
+            }
+            layout {
+                sequence: 35
+            }
+            columnFormatting {
+                htmlExpression:
+                    ```html
+                    <a href="https://ibzsjb-dev2.fa.ocs.oraclecloud.com/fscmUI/redwood/recruiting-hiring/job-application/detail?p_called_from=search&submission_id=#JOB_APPLICATION_ID#&tab_id=ORA_JA_DETAILS" target="fusion">#NAME#</a>
+                    
+                    ```
+            }
+            sorting {
+                defaultSequence: 1
+            }
+        )
+
+        column NOTE_COUNT (
+            reportColumnQueryId: 2
+            derivedColumn: N
+            type: hidden
+            layout {
+                sequence: 665
+            }
+        )
+
+        column PERSON_NOTES_TOGGLE (
+            reportColumnQueryId: 4
+            derivedColumn: N
+            heading {
+                heading: Person Notes
+                alignment: center
+            }
+            layout {
+                sequence: 64
+                columnAlignment: center
+            }
+            columnFormatting {
+                htmlExpression:
+                    ```html
+                    <button type="button" class="pnote-toggle"
+                            data-person-id="#CAND_NUM#"
+                            aria-label="Candidate Notes">
+                      <span class="fa fa-comment-o"></span>
+                      <span class="pnote-badge" data-count="#APPLICANT_NOTE_COUNT#">#APPLICANT_NOTE_COUNT#</span>
+                    </button>
+                    
+                    ```
+            }
+        )
+
+        column PHONE_COUNT (
+            reportColumnQueryId: 5
+            derivedColumn: N
+            heading {
+                heading: Phone Numbers
+                alignment: center
+            }
+            layout {
+                sequence: 65
+                columnAlignment: center
+            }
+            columnFormatting {
+                htmlExpression:
+                    ```html
+                    <button type="button" class="cphone-toggle"
+                            data-person-id="#CAND_NUM#"
+                            aria-label="Phones">
+                      <span class="fa fa-phone"></span>
+                      <span class="cphone-badge" data-count="#PHONE_COUNT#">#PHONE_COUNT#</span>
+                    </button>
+                    
+                    ```
+            }
+        )
+
+        column PUBLISHED_CREATED_BY (
+            reportColumnQueryId: 39
+            derivedColumn: N
+            heading {
+                heading: Published Created By
+                alignment: center
+            }
+            layout {
+                sequence: 425
+            }
+        )
+
+        column PUBLISHED_END_DATE (
+            reportColumnQueryId: 37
+            derivedColumn: N
+            heading {
+                heading: Published End Date
+                alignment: center
+            }
+            layout {
+                sequence: 405
+            }
+            appearance {
+                formatMask: DD-MON-YYYY HH:MIPM
+            }
+        )
+
+        column PUBLISHED_POSTING_STATUS (
+            reportColumnQueryId: 35
+            derivedColumn: N
+            heading {
+                heading: Published Posting Status
+                alignment: center
+            }
+            layout {
+                sequence: 385
+            }
+        )
+
+        column PUBLISHED_START_DATE (
+            reportColumnQueryId: 36
+            derivedColumn: N
+            heading {
+                heading: Published Start Date
+                alignment: center
+            }
+            layout {
+                sequence: 395
+            }
+            appearance {
+                formatMask: DD-MON-YYYY HH:MIPM
+            }
+        )
+
+        column PUBLISHED_TIME_ZONE (
+            reportColumnQueryId: 38
+            derivedColumn: N
+            heading {
+                heading: Published Time Zone
+                alignment: center
+            }
+            layout {
+                sequence: 415
+            }
+        )
+
+        column PUBLISHED_VISIBILITY (
+            reportColumnQueryId: 34
+            derivedColumn: N
+            heading {
+                heading: Published Visibility
+                alignment: center
+            }
+            layout {
+                sequence: 375
+            }
+        )
+
+        column RANKED_BY (
+            reportColumnQueryId: 59
+            derivedColumn: N
+            heading {
+                heading: Ranked By
+            }
+            layout {
+                sequence: 525
+            }
+            sorting {
+                defaultSequence: 1
+            }
+        )
+
+        column RANKING_CSS (
+            reportColumnQueryId: 64
+            derivedColumn: N
+            type: hidden
+            layout {
+                sequence: 575
+            }
+        )
+
+        column RANKING_DISPLAY (
+            reportColumnQueryId: 60
+            derivedColumn: N
+            type: link
+            heading {
+                heading: "Ranking "
+                alignment: center
+            }
+            layout {
+                sequence: 485
+                columnAlignment: center
+            }
+            link {
+                target: {
+                    type: url
+                    url: Javascript:openRankingForm(#JOB_APPLICATION_ID#);void(0);
+                }
+                linkText: #RANKING_DISPLAY#
+            }
+            sorting {
+                defaultSequence: 1
+            }
+        )
+
+        column RANKING_NOTE (
+            reportColumnQueryId: 58
+            derivedColumn: N
+            heading {
+                heading: Ranking Note
+                alignment: center
+            }
+            layout {
+                sequence: 515
+            }
+            sorting {
+                defaultSequence: 1
+            }
+        )
+
+        column RANKING_SCORE (
+            reportColumnQueryId: 56
+            derivedColumn: N
+            heading {
+                heading: Ranking Score
+                alignment: center
+            }
+            layout {
+                sequence: 495
+                columnAlignment: center
+            }
+            columnFormatting {
+                htmlExpression:
+                    ```html
+                    {if RANKING_SCORE/}<a href="javascript:openRankingForm(#JOB_APPLICATION_ID#);void(0);" class="star-link"><span class="star-rating" title="#RANKING_SCORE# out of 5">{case RANKING_SCORE/}{when 1/}<span class="fa fa-star sr-on"></span><span class="fa fa-star-o sr-off"></span><span class="fa fa-star-o sr-off"></span><span class="fa fa-star-o sr-off"></span><span class="fa fa-star-o sr-off"></span>{when 2/}<span class="fa fa-star sr-on"></span><span class="fa fa-star sr-on"></span><span class="fa fa-star-o sr-off"></span><span class="fa fa-star-o sr-off"></span><span class="fa fa-star-o sr-off"></span>{when 3/}<span class="fa fa-star sr-on"></span><span class="fa fa-star sr-on"></span><span class="fa fa-star sr-on"></span><span class="fa fa-star-o sr-off"></span><span class="fa fa-star-o sr-off"></span>{when 4/}<span class="fa fa-star sr-on"></span><span class="fa fa-star sr-on"></span><span class="fa fa-star sr-on"></span><span class="fa fa-star sr-on"></span><span class="fa fa-star-o sr-off"></span>{when 5/}<span class="fa fa-star sr-on"></span><span class="fa fa-star sr-on"></span><span class="fa fa-star sr-on"></span><span class="fa fa-star sr-on"></span><span class="fa fa-star sr-on"></span>{endcase/}</span></a>{else/}<a href="javascript:openRankingForm(#JOB_APPLICATION_ID#);void(0);" class="star-link"><span class="fa fa-plus-circle sr-off" title="Add ranking"></span></a>{endif/}
+                    
+                    ```
+            }
+        )
+
+        column RANKING_TEXT (
+            reportColumnQueryId: 57
+            derivedColumn: N
+            type: hidden
+            layout {
+                sequence: 505
+            }
+            sorting {
+                defaultSequence: 1
+            }
+        )
+
+        column RECRUITER (
+            reportColumnQueryId: 21
+            derivedColumn: N
+            heading {
+                heading: Recruiter
+            }
+            layout {
+                sequence: 106
+            }
+        )
+
+        column REFERENCE_CHECK (
+            reportColumnQueryId: 26
+            derivedColumn: N
+            heading {
+                heading: Reference Check
+                alignment: center
+            }
+            layout {
+                sequence: 155
+                columnAlignment: center
+            }
+            sorting {
+                defaultSequence: 1
+            }
+        )
+
+        column REFS_CORRECTED_ON (
+            reportColumnQueryId: 66
+            derivedColumn: N
+            type: hidden
+            layout {
+                sequence: 595
+            }
+        )
+
+        column REFS_CORRECTED_YN (
+            reportColumnQueryId: 65
+            derivedColumn: N
+            type: hidden
+            layout {
+                sequence: 585
+            }
+        )
+
+        column REF_1_SURVEY_YN (
+            reportColumnQueryId: 71
+            derivedColumn: N
+            type: hidden
+            layout {
+                sequence: 635
+            }
+        )
+
+        column REF_2_SURVEY_YN (
+            reportColumnQueryId: 72
+            derivedColumn: N
+            type: hidden
+            layout {
+                sequence: 645
+            }
+        )
+
+        column REF_3_SURVEY_YN (
+            reportColumnQueryId: 73
+            derivedColumn: N
+            type: hidden
+            layout {
+                sequence: 655
+            }
+        )
+
+        column REF_LINK_ACTION (
+            reportColumnQueryId: 68
+            derivedColumn: N
+            heading {
+                heading: Reference Link
+                alignment: center
+            }
+            layout {
+                sequence: 535
+                columnAlignment: center
+            }
+            exportPrinting {
+                includeInExportPrint: false
+            }
+            security {
+                escapeSpecialChars: false
+            }
+        )
+
+        column REHIRE_ELIGIBLE (
+            reportColumnQueryId: 25
+            derivedColumn: N
+            heading {
+                heading: Rehire Eligible
+                alignment: center
+            }
+            layout {
+                sequence: 145
+                columnAlignment: center
+            }
+            sorting {
+                defaultSequence: 1
+            }
+        )
+
+        column REQ (
+            reportColumnQueryId: 11
+            derivedColumn: N
+            heading {
+                heading: Requisition
+                alignment: center
+            }
+            layout {
+                sequence: 3
+                columnAlignment: center
+            }
+            columnFormatting {
+                htmlExpression:
+                    ```html
+                    <a href="https://ibzsjb-dev2.fa.ocs.oraclecloud.com/fscmUI/faces/deeplink?objType=IRC_RECRUITING&action=REQUISITION_DETAIL_RECRUITING_RESP&objKey=RequisitionId=#JOB_REQUISITION_ID#" target="fusion">#REQ#</a>
+                    
+                    ```
+            }
+            sorting {
+                defaultSequence: 1
+            }
+        )
+
+        column REQUESTED_BY (
+            reportColumnQueryId: 67
+            derivedColumn: N
+            type: hidden
+            layout {
+                sequence: 605
+            }
+        )
+
+        column SCHOOL (
+            reportColumnQueryId: 13
+            derivedColumn: N
+            heading {
+                heading: School/Location
+            }
+            layout {
+                sequence: 5
+            }
+            sorting {
+                defaultSequence: 1
+            }
+        )
+
+        column SC_RETIREMENT_DATE (
+            reportColumnQueryId: 8
+            derivedColumn: N
+            heading {
+                heading: SC Retirement Date
+                alignment: center
+            }
+            layout {
+                sequence: 245
+            }
+            appearance {
+                formatMask: RR-MON-DD
+            }
+        )
+
+        column SURVEY_RESPONDENT_COUNT (
+            reportColumnQueryId: 70
+            derivedColumn: N
+            type: link
+            heading {
+                heading: Survey Respondent Count
+                alignment: center
+            }
+            layout {
+                sequence: 435
+                columnAlignment: center
+            }
+            link {
+                target: {
+                    page: 4004
+                    items: {
+                        P4004_JOB_APPLICATION_ID: #JOB_APPLICATION_ID#
+                    }
+                }
+                linkText: #SURVEY_RESPONDENT_COUNT#
+            }
+        )
+
+        column TEACHER_SUBJECT_AREA (
+            reportColumnQueryId: 30
+            derivedColumn: N
+            heading {
+                heading: Teacher Subject Area
+                alignment: center
+            }
+            layout {
+                sequence: 195
+            }
+            sorting {
+                defaultSequence: 1
+            }
+        )
+
+        column TRANSFER_COORDINATED (
+            reportColumnQueryId: 32
+            derivedColumn: N
+            heading {
+                heading: Transfer Coordinated
+                alignment: center
+            }
+            layout {
+                sequence: 215
+                columnAlignment: center
+            }
+            sorting {
+                defaultSequence: 1
+            }
+        )
+
+        column VACANCY_TERM_SUBMITTED (
+            reportColumnQueryId: 33
+            derivedColumn: N
+            heading {
+                heading: Vacancy Term Submitted
+                alignment: center
+            }
+            layout {
+                sequence: 225
+                columnAlignment: center
+            }
+            sorting {
+                defaultSequence: 1
+            }
+        )
+
+        column WORKING_RETIREE (
+            reportColumnQueryId: 7
+            derivedColumn: N
+            heading {
+                heading: Working Retiree
+                alignment: center
+            }
+            layout {
+                sequence: 235
+                columnAlignment: center
+            }
+        )
+
+    )
+
+    region send-correction-link (
+        name: Send Correction Link
+        type: staticContent
+        layout {
+            sequence: 50
+            slot: body
+        }
+        appearance {
+            template: @/standard
+            templateOptions: [
+                #DEFAULT#
+                t-Region--scrollBody
+            ]
+        }
+        advanced {
+            htmlDomId: reflink_form_region
+        }
+    )
+
+    pageItem P24_CANDIDATE_DISPLAY (
+        type: displayOnly
+        label {
+            label: Candidate
+            alignment: left
+        }
+        layout {
+            sequence: 20
+            region: @move-applicant
+            slot: regionBody
+            alignment: left
+            columnSpan: 12
+        }
+    )
+
+    pageItem P24_COMMENTS (
+        type: textarea
+        label {
+            label: Comments
+            alignment: left
+        }
+        layout {
+            sequence: 70
+            region: @move-applicant
+            slot: regionBody
+            alignment: left
+            columnSpan: 12
+        }
+        appearance {
+            width: 60
+            height: 4
+        }
+    )
+
+    pageItem P24_CURRENT_PHASE (
+        type: displayOnly
+        label {
+            label: Current Phase
+            alignment: left
+        }
+        layout {
+            sequence: 30
+            region: @move-applicant
+            slot: regionBody
+            alignment: left
+            columnSpan: 6
+        }
+    )
+
+    pageItem P24_CURRENT_STATE (
+        type: displayOnly
+        label {
+            label: Current State
+            alignment: left
+        }
+        layout {
+            sequence: 40
+            region: @move-applicant
+            slot: regionBody
+            alignment: left
+            startNewRow: false
+            columnSpan: 6
+        }
+    )
+
+    pageItem P24_JOB_APPLICATION_ID (
+        type: hidden
+        layout {
+            sequence: 10
+            region: @move-applicant
+            slot: regionBody
+        }
+        security {
+            sessionStateProtection: checksumRequiredSessionLevel
+        }
+    )
+
+    pageItem P24_PHASE_ID (
+        type: selectList
+        label {
+            label: New Phase
+            alignment: left
+        }
+        lov {
+            type: sqlQuery
+            sqlQuery:
+                ```sql
+                select phase_name d, phase_id r
+                from   rec_routing_phase
+                where  phase_type = 'APPLICATION'
+                order  by seq_num
+                
+                ```
+            nullDisplayValue: -- Select Phase --
+        }
+        layout {
+            sequence: 50
+            region: @move-applicant
+            slot: regionBody
+            alignment: left
+            columnSpan: 12
+        }
+    )
+
+    pageItem P24_RANK_APP_ID (
+        type: hidden
+        layout {
+            sequence: 10
+            region: @rank-applicant
+            slot: regionBody
+        }
+        security {
+            sessionStateProtection: checksumRequiredSessionLevel
+        }
+    )
+
+    pageItem P24_RANK_CANDIDATE (
+        type: displayOnly
+        label {
+            label: Candidate
+            alignment: left
+        }
+        layout {
+            sequence: 20
+            region: @rank-applicant
+            slot: regionBody
+            alignment: left
+            columnSpan: 12
+        }
+    )
+
+    pageItem P24_RANK_LAST_BY (
+        type: displayOnly
+        label {
+            label: Last Ranked By
+            alignment: left
+        }
+        layout {
+            sequence: 60
+            region: @rank-applicant
+            slot: regionBody
+            alignment: left
+            columnSpan: 12
+        }
+    )
+
+    pageItem P24_RANK_NOTE (
+        type: textarea
+        label {
+            label: Notes
+            alignment: left
+        }
+        layout {
+            sequence: 50
+            region: @rank-applicant
+            slot: regionBody
+            alignment: left
+            columnSpan: 12
+        }
+        appearance {
+            width: 60
+            height: 4
+        }
+    )
+
+    pageItem P24_RANK_SCORE (
+        type: selectList
+        label {
+            label: Score (1-5)
+            alignment: left
+        }
+        lov {
+            type: staticValues
+            staticValues: STATIC:1;1,2;2,3;3,4;4,5;5
+            displayExtraValues: false
+            nullDisplayValue: -- Select Score --
+        }
+        layout {
+            sequence: 30
+            region: @rank-applicant
+            slot: regionBody
+            alignment: left
+            columnSpan: 6
+        }
+    )
+
+    pageItem P24_RANK_TEXT (
+        type: selectList
+        label {
+            label: Recommendation
+            alignment: left
+        }
+        lov {
+            type: staticValues
+            staticValues: STATIC:Highly Recommended;Highly Recommended,Recommended;Recommended,Consider;Consider,Not Recommended;Not Recommended
+            displayExtraValues: false
+            nullDisplayValue: -- Select --
+        }
+        layout {
+            sequence: 40
+            region: @rank-applicant
+            slot: regionBody
+            alignment: left
+            startNewRow: false
+            columnSpan: 6
+        }
+    )
+
+    pageItem P24_REFLINK_APP_ID (
+        type: hidden
+        layout {
+            sequence: 10
+            region: @send-correction-link
+            slot: regionBody
+        }
+        security {
+            sessionStateProtection: checksumRequiredSessionLevel
+        }
+    )
+
+    pageItem P24_REFLINK_CANDIDATE (
+        type: displayOnly
+        label {
+            label: Candidate
+            alignment: left
+        }
+        layout {
+            sequence: 20
+            region: @send-correction-link
+            slot: regionBody
+            alignment: left
+            columnSpan: 12
+        }
+    )
+
+    pageItem P24_REFLINK_EMAIL (
+        type: textField
+        label {
+            label: Recipient Email
+            alignment: left
+        }
+        layout {
+            sequence: 40
+            region: @send-correction-link
+            slot: regionBody
+            alignment: left
+            columnSpan: 12
+        }
+        appearance {
+            template: 2318601014498890498
+            templateOptions: #DEFAULT#
+            width: 60
+        }
+        help {
+            helpText: Auto-populated for internal candidates. For external candidates, enter the applicant's email.
+        }
+    )
+
+    pageItem P24_REFLINK_NOTE (
+        type: textarea
+        label {
+            label: Personal Note (optional)
+            alignment: left
+        }
+        layout {
+            sequence: 50
+            region: @send-correction-link
+            slot: regionBody
+            alignment: left
+        }
+        appearance {
+            template: @/optional-floating
+            templateOptions: #DEFAULT#
+            width: 30
+            height: 5
+        }
+    )
+
+    pageItem P24_REFLINK_URL (
+        type: displayOnly
+        label {
+            label: Correction Link
+            alignment: left
+        }
+        layout {
+            sequence: 30
+            region: @send-correction-link
+            slot: regionBody
+            alignment: left
+            columnSpan: 12
+        }
+    )
+
+    pageItem P24_STATE_ID (
+        type: selectList
+        label {
+            label: New State
+            alignment: left
+        }
+        lov {
+            type: sqlQuery
+            sqlQuery:
+                ```sql
+                select distinct
+                       rs.state_name  d,
+                       s.state_id     r
+                from   irc_routing_steps_stg  p
+                join   irc_routing_steps_stg  s
+                       on  s.process_id = p.sub_process_id
+                       and s.type_code  = 'STATE'
+                join   rec_routing_state  rs
+                       on  rs.state_id = s.state_id
+                where  p.phase_id  = :P24_PHASE_ID
+                and    p.type_code = 'PHASE'
+                order  by rs.state_name
+                
+                
+                ```
+            nullDisplayValue: -- Select State --
+        }
+        cascadingLov {
+            parentItems: [
+                P24_CURRENT_PHASE
+                P24_PHASE_ID
+            ]
+        }
+        layout {
+            sequence: 60
+            region: @move-applicant
+            slot: regionBody
+            alignment: left
+            columnSpan: 12
+        }
+    )
+
+    pageItem P24_TICKET_COUNT (
+        type: hidden
+        layout {
+            sequence: 10
+            region: @button-bar
+            slot: regionBody
+        }
+    )
+
+    button cancel-btn (
+        buttonName: CANCEL_BTN
+        label: Cancel
+        layout {
+            sequence: 20
+            region: @move-applicant
+            slot: close
+        }
+        appearance {
+            buttonTemplate: @/text
+            templateOptions: #DEFAULT#
+        }
+        behavior {
+            action: triggerAction
+        }
+
+        triggerAction native-javascript-code (
+            action: executeJsCode
+            settings {
+                jsCode: cancelMoveForm();
+            }
+            execution {
+                sequence: 10
+            }
+        )
+
+    )
+
+    button cancel-ranking-btn (
+        buttonName: CANCEL_RANKING_BTN
+        label: Cancel
+        layout {
+            sequence: 20
+            region: @rank-applicant
+            slot: close
+        }
+        appearance {
+            buttonTemplate: @/text
+            templateOptions: #DEFAULT#
+        }
+        behavior {
+            action: triggerAction
+        }
+
+        triggerAction native-javascript-code (
+            action: executeJsCode
+            settings {
+                jsCode: cancelRankingForm();
+            }
+            execution {
+                sequence: 10
+            }
+        )
+
+    )
+
+    button cancel-reflink-btn (
+        buttonName: CANCEL_REFLINK_BTN
+        label: Cancel
+        layout {
+            sequence: 30
+            region: @send-correction-link
+            slot: close
+        }
+        appearance {
+            buttonTemplate: @/text
+            templateOptions: #DEFAULT#
+        }
+        behavior {
+            action: triggerAction
+        }
+
+        triggerAction native-javascript-code (
+            action: executeJsCode
+            settings {
+                jsCode: cancelRefLinkForm();
+            }
+            execution {
+                sequence: 10
+            }
+        )
+
+    )
+
+    button copy-ref-link-btn (
+        buttonName: COPY_REF_LINK_BTN
+        label: Copy Link
+        layout {
+            sequence: 10
+            region: @send-correction-link
+            slot: change
+        }
+        appearance {
+            buttonTemplate: @/text-with-icon
+            templateOptions: [
+                #DEFAULT#
+                t-Button--iconLeft
+            ]
+            icon: fa-copy
+        }
+        behavior {
+            action: triggerAction
+        }
+        advanced {
+            htmlDomId: COPY_REF_LINK_BTN
+        }
+
+        triggerAction native-javascript-code (
+            action: executeJsCode
+            settings {
+                jsCode: copyRefLink();
+            }
+            execution {
+                sequence: 10
+            }
+        )
+
+    )
+
+    button move-btn (
+        buttonName: MOVE_BTN
+        label: Move Applicant
+        layout {
+            sequence: 10
+            region: @move-applicant
+            slot: change
+        }
+        appearance {
+            buttonTemplate: @/text-with-icon
+            hot: true
+            templateOptions: [
+                #DEFAULT#
+                t-Button--iconLeft
+            ]
+            icon: fa-exchange
+        }
+        behavior {
+            action: triggerAction
+        }
+
+        triggerAction native-javascript-code (
+            action: executeJsCode
+            settings {
+                jsCode: submitMove();
+            }
+            execution {
+                sequence: 10
+            }
+        )
+
+    )
+
+    button open-tickets (
+        buttonName: OPEN_TICKETS
+        label: &P24_TICKET_COUNT. Open Tickets
+        layout {
+            sequence: 20
+            region: @button-bar
+            slot: next
+        }
+        appearance {
+            buttonTemplate: @/text
+            hot: true
+            templateOptions: [
+                #DEFAULT#
+                t-Button--tiny
+                t-Button--link
+            ]
+        }
+        behavior {
+            action: redirectThisApp
+            target: {
+                page: 5001
+                items: {
+                    P5001_RETURN_PAGE: 24
+                }
+            }
+            warnOnUnsavedChanges: doNotCheck
+        }
+        advanced {
+            htmlDomId: tickets
+            customAttributes: style="color: blue"
+        }
+        config {
+            buildOption: @commented-out
+        }
+    )
+
+    button refresh (
+        buttonName: Refresh
+        label: Refresh Recruiting Data
+        layout {
+            sequence: 30
+            region: @button-bar
+            slot: next
+        }
+        appearance {
+            buttonTemplate: @/text-with-icon
+            templateOptions: [
+                #DEFAULT#
+                t-Button--iconRight
+            ]
+            icon: fa-chevron-down
+        }
+        behavior {
+            action: definedByDynamicAction
+        }
+        advanced {
+            htmlDomId: refresh_recruiting_data
+            customAttributes: data-menu="MENU-LIST_menu" style="color: white" style="color:black"
+        }
+    )
+
+    button reset (
+        buttonName: RESET
+        label: Reset
+        layout {
+            sequence: 10
+            region: @button-bar
+            slot: next
+        }
+        appearance {
+            buttonTemplate: @/text-with-icon
+            templateOptions: [
+                #DEFAULT#
+                t-Button--noUI
+                t-Button--iconLeft
+            ]
+            icon: fa-undo
+        }
+        behavior {
+            action: redirectThisApp
+            target: {
+                page: 24
+                clearCache: 24
+                action: resetRegions
+            }
+            warnOnUnsavedChanges: doNotCheck
+        }
+    )
+
+    button save-ranking-btn (
+        buttonName: SAVE_RANKING_BTN
+        label: Save Ranking
+        layout {
+            sequence: 10
+            region: @rank-applicant
+            slot: change
+        }
+        appearance {
+            buttonTemplate: @/text-with-icon
+            hot: true
+            templateOptions: [
+                #DEFAULT#
+                t-Button--iconLeft
+            ]
+            icon: fa-check
+        }
+        behavior {
+            action: triggerAction
+        }
+
+        triggerAction native-javascript-code (
+            action: executeJsCode
+            settings {
+                jsCode: submitRanking();
+            }
+            execution {
+                sequence: 10
+            }
+        )
+
+    )
+
+    button send-ref-email-btn (
+        buttonName: SEND_REF_EMAIL_BTN
+        label: Send Email
+        layout {
+            sequence: 20
+            region: @send-correction-link
+            slot: change
+        }
+        appearance {
+            buttonTemplate: @/text-with-icon
+            hot: true
+            templateOptions: [
+                #DEFAULT#
+                t-Button--iconLeft
+            ]
+            icon: fa-send-o
+        }
+        behavior {
+            action: triggerAction
+        }
+        advanced {
+            htmlDomId: SEND_REF_EMAIL_BTN
+        }
+
+        triggerAction native-javascript-code (
+            action: executeJsCode
+            settings {
+                jsCode: sendRefLinkEmail();
+            }
+            execution {
+                sequence: 10
+            }
+        )
+
+    )
+
+    computation p24-ticket-count (
+        itemName: P24_TICKET_COUNT
+        execution {
+            sequence: 10
+        }
+        computation {
+            sqlQuery:
+                ```sql
+                SELECT COUNT(*)
+                  FROM app_ticket
+                 WHERE status_code NOT IN ('RESOLVED','CLOSED')
+                   AND (submitted_by = :APP_USER OR assigned_to = :APP_USER)
+                
+                
+                ```
+        }
+    )
+
+    process add-app-note (
+        name: ADD_APP_NOTE
+        type: executeCode
+        source {
+            plsqlCode:
+                ```plsql
+                DECLARE
+                    l_app_id    NUMBER         := TO_NUMBER(apex_application.g_x01);
+                    l_note_text VARCHAR2(4000) := SUBSTRB(apex_application.g_x02, 1, 4000);
+                    l_count     NUMBER;
+                BEGIN
+                    INSERT INTO candidate_note (job_application_id, note_text, created_by)
+                    VALUES (l_app_id, l_note_text,
+                            COALESCE(SYS_CONTEXT('APEX$SESSION','APP_USER'), USER));
+                
+                    -- Dual-write to Fusion (fire-and-forget)
+                    BEGIN
+                        DECLARE
+                            l_fusion_result VARCHAR2(200);
+                            l_person_id     NUMBER;
+                        BEGIN
+                            SELECT CANDIDATEPERSONID INTO l_person_id
+                              FROM (SELECT CANDIDATEPERSONID,
+                                           ROW_NUMBER() OVER (PARTITION BY JOBAPPLICATIONID
+                                                              ORDER BY "APEX$ROW_SYNC_TIMESTAMP" DESC) rn
+                                      FROM JOB_APPLICANTS_R
+                                     WHERE JOBAPPLICATIONID = l_app_id)
+                             WHERE rn = 1;
+                
+                            l_fusion_result := pkg_ui_interactions.post_interaction(
+                                p_context_type_code => 'ORA_SUBMISSION',
+                                p_context_id        => l_app_id,
+                                p_person_id         => l_person_id,
+                                p_note_text         => l_note_text
+                            );
+                
+                            IF l_fusion_result = 'ORA_SUCCESS' THEN
+                                pkg_ui_interactions.sync_person(l_person_id);
+                            END IF;
+                        END;
+                    EXCEPTION
+                        WHEN OTHERS THEN NULL;
+                    END;
+                
+                    apex_json.open_object;
+                    apex_json.write('status', 'OK');
+                
+                    apex_json.open_array('notes');
+                    FOR r IN (
+                        SELECT note_text,
+                               created_by,
+                               TO_CHAR(created_on, 'DD-Mon-YYYY HH24:MI') AS created_on
+                          FROM candidate_note
+                         WHERE job_application_id = l_app_id
+                         ORDER BY created_on DESC
+                    ) LOOP
+                        apex_json.open_object;
+                        apex_json.write('note_text',   r.note_text);
+                        apex_json.write('created_by',  r.created_by);
+                        apex_json.write('created_on',  r.created_on);
+                        apex_json.close_object;
+                    END LOOP;
+                    apex_json.close_array;
+                
+                    SELECT COUNT(*) INTO l_count
+                      FROM candidate_note
+                     WHERE job_application_id = l_app_id;
+                
+                    apex_json.write('note_count', l_count);
+                    apex_json.close_object;
+                
+                EXCEPTION
+                    WHEN OTHERS THEN
+                        apex_json.open_object;
+                        apex_json.write('status',  'ERROR');
+                        apex_json.write('message', SQLERRM);
+                        apex_json.close_object;
+                END;
+                ```
+        }
+        execution {
+            sequence: 90
+            point: ajaxCallback
+        }
+        advanced {
+            executionMappingIdentifier: 116367976420692741
+        }
+    )
+
+    process add-person-note (
+        name: ADD_PERSON_NOTE
+        type: executeCode
+        source {
+            plsqlCode:
+                ```plsql
+                DECLARE
+                    l_person_id NUMBER         := TO_NUMBER(apex_application.g_x01);
+                    l_note_text VARCHAR2(4000) := SUBSTRB(apex_application.g_x02, 1, 4000);
+                    l_count     NUMBER;
+                BEGIN
+                    INSERT INTO applicant_note (person_id, note_text, created_by)
+                    VALUES (l_person_id, l_note_text,
+                            COALESCE(SYS_CONTEXT('APEX$SESSION','APP_USER'), USER));
+                
+                    -- Dual-write to Fusion (fire-and-forget)
+                    BEGIN
+                        DECLARE
+                            l_fusion_result VARCHAR2(200);
+                        BEGIN
+                            l_fusion_result := pkg_ui_interactions.post_interaction(
+                                p_context_type_code => 'ORA_CAND_PROFILE',
+                                p_context_id        => l_person_id,
+                                p_person_id         => l_person_id,
+                                p_note_text         => l_note_text
+                            );
+                
+                            IF l_fusion_result = 'ORA_SUCCESS' THEN
+                                pkg_ui_interactions.sync_person(l_person_id);
+                            END IF;
+                        END;
+                    EXCEPTION
+                        WHEN OTHERS THEN NULL;
+                    END;
+                
+                    apex_json.open_object;
+                    apex_json.write('status', 'OK');
+                
+                    apex_json.open_array('notes');
+                    FOR r IN (
+                        SELECT note_text,
+                               created_by,
+                               TO_CHAR(created_on, 'DD-Mon-YYYY HH24:MI') AS created_on
+                          FROM applicant_note
+                         WHERE person_id = l_person_id
+                         ORDER BY created_on DESC
+                    ) LOOP
+                        apex_json.open_object;
+                        apex_json.write('note_text',   r.note_text);
+                        apex_json.write('created_by',  r.created_by);
+                        apex_json.write('created_on',  r.created_on);
+                        apex_json.close_object;
+                    END LOOP;
+                    apex_json.close_array;
+                
+                    SELECT COUNT(*) INTO l_count
+                      FROM applicant_note
+                     WHERE person_id = l_person_id;
+                
+                    apex_json.write('note_count', l_count);
+                    apex_json.close_object;
+                
+                EXCEPTION
+                    WHEN OTHERS THEN
+                        apex_json.open_object;
+                        apex_json.write('status',  'ERROR');
+                        apex_json.write('message', SQLERRM);
+                        apex_json.close_object;
+                END;
+                ```
+        }
+        execution {
+            sequence: 120
+            point: ajaxCallback
+        }
+        advanced {
+            executionMappingIdentifier: 126366928018556204
+        }
+    )
+
+    process generate-ref-link (
+        name: GENERATE_REF_LINK
+        type: executeCode
+        source {
+            plsqlCode:
+                ```plsql
+                DECLARE
+                    l_app_id NUMBER := TO_NUMBER(apex_application.g_x01);
+                    l_url    VARCHAR2(4000);
+                    l_email  VARCHAR2(500);
+                    l_name   VARCHAR2(500);
+                BEGIN
+                    l_url := pkg_ref_correction.generate_token(
+                        p_job_application_id => l_app_id,
+                        p_requested_by       => :APP_USER
+                    );
+                
+                BEGIN
+                    SELECT c.EMAIL INTO l_email
+                      FROM RECRUITING_CANDIDATES_R c
+                      JOIN JOB_APPLICANTS_R a
+                        ON a.CANDIDATEPERSONID = c.PERSONID
+                     WHERE a.JOBAPPLICATIONID = l_app_id
+                       AND ROWNUM = 1;
+                EXCEPTION
+                    WHEN NO_DATA_FOUND THEN l_email := NULL;
+                END;
+                
+                    BEGIN
+                        SELECT CANDIDATENAME INTO l_name
+                          FROM JOB_APPLICANTS_R
+                         WHERE JOBAPPLICATIONID = l_app_id
+                           AND ROWNUM = 1;
+                    EXCEPTION
+                        WHEN NO_DATA_FOUND THEN l_name := 'Unknown';
+                    END;
+                
+                    apex_json.open_object;
+                    apex_json.write('status', 'OK');
+                    apex_json.write('url', l_url);
+                    apex_json.write('candidate_name', l_name);
+                    apex_json.write('candidate_email', l_email);
+                    apex_json.close_object;
+                EXCEPTION
+                    WHEN OTHERS THEN
+                        apex_json.open_object;
+                        apex_json.write('status', 'ERROR');
+                        apex_json.write('message', SQLERRM);
+                        apex_json.close_object;
+                END;
+                ```
+        }
+        execution {
+            sequence: 60
+            point: ajaxCallback
+        }
+        advanced {
+            executionMappingIdentifier: 777000000000000701
+        }
+    )
+
+    process get-app-details (
+        name: GET_APP_DETAILS
+        type: executeCode
+        source {
+            plsqlCode:
+                ```plsql
+                DECLARE
+                    l_name     VARCHAR2(240);
+                    l_phase    VARCHAR2(240);
+                    l_state    VARCHAR2(240);
+                    l_phase_id NUMBER;
+                BEGIN
+                    SELECT
+                        CANDIDATE_NAME,
+                        APPLICATION_PHASE,
+                        APPLICATION_STATE
+                    INTO l_name, l_phase, l_state
+                    FROM FBX_QSTNR_APPLICANT_V
+                    WHERE JOB_APPLICATION_ID = TO_NUMBER(apex_application.g_x01)
+                      AND ROWNUM = 1;
+                
+                    -- Look up phase_id to pre-select the dropdown
+                    BEGIN
+                        SELECT phase_id INTO l_phase_id
+                          FROM rec_routing_phase
+                         WHERE phase_name = l_phase
+                           AND phase_type = 'APPLICATION'
+                           AND ROWNUM = 1;
+                    EXCEPTION
+                        WHEN NO_DATA_FOUND THEN l_phase_id := NULL;
+                    END;
+                
+                    apex_json.open_object;
+                    apex_json.write('candidate_name', l_name);
+                    apex_json.write('phase', l_phase);
+                    apex_json.write('state', l_state);
+                    apex_json.write('phase_id', l_phase_id);
+                    apex_json.close_object;
+                EXCEPTION
+                    WHEN NO_DATA_FOUND THEN
+                        apex_json.open_object;
+                        apex_json.write('candidate_name', 'Unknown');
+                        apex_json.write('phase', '');
+                        apex_json.write('state', '');
+                        apex_json.write('phase_id', '');
+                        apex_json.close_object;
+                END;
+                
+                ```
+        }
+        execution {
+            sequence: 10
+            point: ajaxCallback
+        }
+        advanced {
+            executionMappingIdentifier: 106486689845672336
+        }
+    )
+
+    process get-app-notes (
+        name: GET_APP_NOTES
+        type: executeCode
+        source {
+            plsqlCode:
+                ```plsql
+                DECLARE
+                    l_app_id   NUMBER := TO_NUMBER(apex_application.g_x01);
+                    l_count    NUMBER := 0;
+                BEGIN
+                    apex_json.open_object;
+                    apex_json.open_array('notes');
+                
+                    FOR r IN (
+                        SELECT note_text,
+                               created_by,
+                               TO_CHAR(created_on, 'DD-Mon-YYYY HH24:MI') AS created_on
+                          FROM candidate_note
+                         WHERE job_application_id = l_app_id
+                         ORDER BY created_on DESC
+                    ) LOOP
+                        l_count := l_count + 1;
+                        apex_json.open_object;
+                        apex_json.write('note_text',   r.note_text);
+                        apex_json.write('created_by',  r.created_by);
+                        apex_json.write('created_on',  r.created_on);
+                        apex_json.close_object;
+                    END LOOP;
+                
+                    apex_json.close_array;
+                    apex_json.write('note_count', l_count);
+                    apex_json.close_object;
+                END;
+                ```
+        }
+        execution {
+            sequence: 80
+            point: ajaxCallback
+        }
+        advanced {
+            executionMappingIdentifier: 116367866108692740
+        }
+    )
+
+    process get-person-notes (
+        name: GET_PERSON_NOTES
+        type: executeCode
+        source {
+            plsqlCode:
+                ```plsql
+                DECLARE
+                    l_person_id NUMBER := TO_NUMBER(apex_application.g_x01);
+                    l_count     NUMBER := 0;
+                BEGIN
+                    apex_json.open_object;
+                    apex_json.open_array('notes');
+                
+                    FOR r IN (
+                        SELECT note_text,
+                               created_by,
+                               TO_CHAR(created_on, 'DD-Mon-YYYY HH24:MI') AS created_on
+                          FROM applicant_note
+                         WHERE person_id = l_person_id
+                         ORDER BY created_on DESC
+                    ) LOOP
+                        l_count := l_count + 1;
+                        apex_json.open_object;
+                        apex_json.write('note_text',   r.note_text);
+                        apex_json.write('created_by',  r.created_by);
+                        apex_json.write('created_on',  r.created_on);
+                        apex_json.close_object;
+                    END LOOP;
+                
+                    apex_json.close_array;
+                    apex_json.write('note_count', l_count);
+                    apex_json.close_object;
+                END;
+                ```
+        }
+        execution {
+            sequence: 110
+            point: ajaxCallback
+        }
+        advanced {
+            executionMappingIdentifier: 126366813377556203
+        }
+    )
+
+    process get-phones (
+        name: GET_PHONES
+        type: executeCode
+        source {
+            plsqlCode:
+                ```plsql
+                DECLARE
+                    l_person_id NUMBER := TO_NUMBER(apex_application.g_x01);
+                BEGIN
+                    apex_json.open_object;
+                    apex_json.open_array('phones');
+                
+                    FOR r IN (
+                        SELECT phone_type,
+                               fmt_phone(
+                                   CASE
+                                       WHEN country_code_number IS NOT NULL
+                                            AND area_code IS NOT NULL
+                                       THEN country_code_number || area_code || phone_number
+                                       WHEN area_code IS NOT NULL
+                                       THEN area_code || phone_number
+                                       ELSE phone_number
+                                   END
+                               ) AS phone_number,
+                               NVL(primary_flag, 'N') AS primary_flag
+                          FROM candidate_phones_r
+                         WHERE person_id = l_person_id
+                         ORDER BY DECODE(primary_flag, 'Y', 0, 1),
+                                  DECODE(phone_type, 'MOBILE', 1, 'HOME', 2, 'WORK', 3, 9),
+                                  phone_id
+                    ) LOOP
+                        apex_json.open_object;
+                        apex_json.write('phone_type',    r.phone_type);
+                        apex_json.write('phone_number',  r.phone_number);
+                        apex_json.write('primary_flag',  r.primary_flag);
+                        apex_json.close_object;
+                    END LOOP;
+                
+                    apex_json.close_array;
+                    apex_json.close_object;
+                END;
+                ```
+        }
+        execution {
+            sequence: 100
+            point: ajaxCallback
+        }
+        advanced {
+            executionMappingIdentifier: 121639673242818749
+        }
+    )
+
+    process get-ranking-details (
+        name: GET_RANKING_DETAILS
+        type: executeCode
+        source {
+            plsqlCode:
+                ```plsql
+                DECLARE
+                    l_app_id NUMBER := TO_NUMBER(apex_application.g_x01);
+                    l_name   VARCHAR2(240);
+                    l_score  NUMBER;
+                    l_text   VARCHAR2(30);
+                    l_note   VARCHAR2(500);
+                    l_by     VARCHAR2(240);
+                BEGIN
+                    -- Get candidate name from the report view
+                    BEGIN
+                        SELECT NAME INTO l_name
+                        FROM RECRUITING_REPORT_V
+                        WHERE JOB_APPLICATION_ID = l_app_id
+                          AND ROWNUM = 1;
+                    EXCEPTION WHEN NO_DATA_FOUND THEN l_name := 'Unknown';
+                    END;
+                    -- Get existing ranking (if any)
+                    BEGIN
+                        SELECT ranking_score, ranking_text, ranking_note, ranked_by
+                        INTO l_score, l_text, l_note, l_by
+                        FROM applicant_ranking
+                        WHERE job_application_id = l_app_id;
+                    EXCEPTION WHEN NO_DATA_FOUND THEN NULL;
+                    END;
+                    apex_json.open_object;
+                    apex_json.write('candidate_name', l_name);
+                    apex_json.write('ranking_score', l_score);
+                    apex_json.write('ranking_text', l_text);
+                    apex_json.write('ranking_note', l_note);
+                    apex_json.write('ranked_by', l_by);
+                    apex_json.close_object;
+                END;
+                ```
+        }
+        execution {
+            sequence: 40
+            point: ajaxCallback
+        }
+        advanced {
+            executionMappingIdentifier: 106487588413675200
+        }
+    )
+
+    process list-attachments (
+        name: LIST_ATTACHMENTS
+        type: executeCode
+        source {
+            plsqlCode:
+                ```plsql
+                BEGIN
+                    pkg_app_attachments.list_attachments(
+                        p_job_application_id => TO_NUMBER(apex_application.g_x01)
+                    );
+                END;
+                
+                ```
+        }
+        execution {
+            sequence: 30
+            point: ajaxCallback
+        }
+        advanced {
+            executionMappingIdentifier: 106487244362674208
+        }
+    )
+
+    process move-applicant (
+        name: MOVE_APPLICANT
+        type: executeCode
+        source {
+            plsqlCode:
+                ```plsql
+                DECLARE
+                    l_response CLOB;
+                BEGIN
+                    l_response := pkg_rec_move.move_application(
+                        p_job_application_id => TO_NUMBER(apex_application.g_x01),
+                        p_phase_id           => TO_NUMBER(apex_application.g_x02),
+                        p_state_id           => TO_NUMBER(apex_application.g_x03),
+                        p_comments           => apex_application.g_x04
+                    );
+                    apex_json.open_object;
+                    apex_json.write('status', 'OK');
+                    apex_json.close_object;
+                EXCEPTION
+                    WHEN OTHERS THEN
+                        apex_json.open_object;
+                        apex_json.write('status', 'ERROR');
+                        apex_json.write('message', REGEXP_REPLACE(SQLERRM, '^ORA-[0-9]+: *'));
+                        apex_json.close_object;
+                END;
+                ```
+        }
+        execution {
+            sequence: 20
+            point: ajaxCallback
+        }
+        advanced {
+            executionMappingIdentifier: 106486990371673216
+        }
+    )
+
+    process refresh-recruiting (
+        name: REFRESH_RECRUITING
+        type: executeCode
+        source {
+            plsqlCode:
+                ```plsql
+                declare
+                    l_mode  varchar2(20) := nvl(apex_application.g_x01, 'INCREMENTAL');
+                    l_reqs  number;
+                    l_cands number;
+                    l_apps  number;
+                begin
+                    pkg_rest_recruiting.refresh_all(
+                        p_full_refresh => (l_mode = 'FULL')
+                    );
+                
+                    -- Read row counts from bicc_load_log (just written by refresh_all)
+                    select
+                        max(case when load_type = 'REST_REQUISITIONS' then rows_processed end),
+                        max(case when load_type = 'REST_CANDIDATES'   then rows_processed end),
+                        max(case when load_type = 'REST_APPLICATIONS'  then rows_processed end)
+                      into l_reqs, l_cands, l_apps
+                      from (
+                          select load_type, rows_processed,
+                                 row_number() over (
+                                     partition by load_type
+                                     order by created_ts desc
+                                 ) rn
+                            from bicc_load_log
+                           where step = 'REFRESH'
+                             and status = 'SUCCESS'
+                             and load_type in (
+                                 'REST_REQUISITIONS',
+                                 'REST_CANDIDATES',
+                                 'REST_APPLICATIONS'
+                             )
+                      )
+                     where rn = 1;
+                
+                    apex_json.open_object;
+                    apex_json.write('status', 'OK');
+                    apex_json.write('mode', l_mode);
+                    apex_json.write('requisitions', l_reqs);
+                    apex_json.write('candidates', l_cands);
+                    apex_json.write('applications', l_apps);
+                    apex_json.close_object;
+                
+                exception
+                    when others then
+                        apex_json.open_object;
+                        apex_json.write('status', 'ERROR');
+                        apex_json.write('message', sqlerrm);
+                        apex_json.close_object;
+                end;
+                ```
+        }
+        execution {
+            sequence: 130
+            point: ajaxCallback
+        }
+        advanced {
+            executionMappingIdentifier: 171876651038948440
+        }
+    )
+
+    process save-ranking (
+        name: SAVE_RANKING
+        type: executeCode
+        source {
+            plsqlCode:
+                ```plsql
+                DECLARE
+                    l_app_id NUMBER       := TO_NUMBER(apex_application.g_x01);
+                    l_score  NUMBER       := CASE WHEN apex_application.g_x02 IS NOT NULL
+                                                  THEN TO_NUMBER(apex_application.g_x02) END;
+                    l_text   VARCHAR2(30) := NULLIF(apex_application.g_x03, '');
+                    l_note   VARCHAR2(500):= NULLIF(apex_application.g_x04, '');
+                BEGIN
+                    MERGE INTO applicant_ranking t
+                    USING (SELECT l_app_id AS job_application_id FROM dual) s
+                    ON (t.job_application_id = s.job_application_id)
+                    WHEN MATCHED THEN UPDATE SET
+                        t.ranking_score = l_score,
+                        t.ranking_text  = l_text,
+                        t.ranking_note  = l_note,
+                        t.ranked_by     = :APP_USER,
+                        t.ranked_on     = SYSTIMESTAMP
+                    WHEN NOT MATCHED THEN INSERT
+                        (job_application_id, ranking_score, ranking_text, ranking_note,
+                         ranked_by, ranked_on)
+                    VALUES
+                        (l_app_id, l_score, l_text, l_note, :APP_USER, SYSTIMESTAMP);
+                    COMMIT;
+                    apex_json.open_object;
+                    apex_json.write('status', 'OK');
+                    apex_json.close_object;
+                EXCEPTION
+                    WHEN OTHERS THEN
+                        apex_json.open_object;
+                        apex_json.write('status', 'ERROR');
+                        apex_json.write('message', SQLERRM);
+                        apex_json.close_object;
+                END;
+                ```
+        }
+        execution {
+            sequence: 50
+            point: ajaxCallback
+        }
+        advanced {
+            executionMappingIdentifier: 106487865560675968
+        }
+    )
+
+    process send-ref-link-email (
+        name: SEND_REF_LINK_EMAIL
+        type: executeCode
+        source {
+            plsqlCode:
+                ```plsql
+                DECLARE
+                    l_app_id NUMBER := TO_NUMBER(apex_application.g_x01);
+                    l_email  VARCHAR2(500) := apex_application.g_x02;
+                    l_url    VARCHAR2(4000) := apex_application.g_x03;
+                    l_note   VARCHAR2(4000) := apex_application.g_x04;
+                    l_name   VARCHAR2(500);
+                BEGIN
+                    BEGIN
+                        SELECT CANDIDATENAME INTO l_name
+                          FROM JOB_APPLICANTS_R
+                         WHERE JOBAPPLICATIONID = l_app_id
+                           AND ROWNUM = 1;
+                    EXCEPTION
+                        WHEN NO_DATA_FOUND THEN l_name := 'Applicant';
+                    END;
+                
+                    pkg_ref_correction.send_correction_email(
+                        p_job_application_id => l_app_id,
+                        p_candidate_email    => l_email,
+                        p_candidate_name     => l_name,
+                        p_url                => l_url,
+                        p_personal_note      => l_note
+                    );
+                
+                    apex_json.open_object;
+                    apex_json.write('status', 'OK');
+                    apex_json.close_object;
+                EXCEPTION
+                    WHEN OTHERS THEN
+                        apex_json.open_object;
+                        apex_json.write('status', 'ERROR');
+                        apex_json.write('message', SQLERRM);
+                        apex_json.close_object;
+                END;
+                ```
+        }
+        execution {
+            sequence: 70
+            point: ajaxCallback
+        }
+        advanced {
+            executionMappingIdentifier: 777000000000000702
+        }
+    )
+
+)
+

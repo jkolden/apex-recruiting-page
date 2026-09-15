@@ -1,0 +1,417 @@
+list menu-popup (
+    name: Menu Popup
+
+    entry refresh-tasks (
+        label: Refresh Tasks
+        icon {
+            imageIconCssClasses: fa-refresh
+        }
+        layout {
+            sequence: 30
+        }
+        link {
+            target: {
+                type: url
+                url: javascript:void refreshTasks();
+            }
+        }
+    )
+
+)
+
+list menu-popup-content-row (
+    name: Menu Popup Content Row
+
+    entry refresh-tasks (
+        label: Refresh Tasks
+        icon {
+            imageIconCssClasses: fa-refresh
+        }
+        layout {
+            sequence: 10
+        }
+        link {
+            target: {
+                type: url
+                url: javascript:void refreshTasks();
+            }
+        }
+    )
+
+    entry show-my-tasks (
+        label: Show my Tasks
+        icon {
+            imageIconCssClasses: fa-filter
+            attributes: class="js-my-tasks-togglel"
+        }
+        layout {
+            sequence: 40
+        }
+        link {
+            target: {
+                type: url
+                url: javascript:toggleMyTasks('P6204_ASSIGNEE_ID','&APP_USER.');void(0)
+            }
+        }
+    )
+
+)
+
+list navigation-bar (
+    name: Navigation Bar
+
+    entry app-user (
+        label: &APP_USER.
+        icon {
+            imageIconCssClasses: fa-user
+        }
+        layout {
+            sequence: 10
+        }
+        link {
+            target: {
+                type: url
+                url: #
+            }
+        }
+        userDefinedAttributes {
+            2: has-username
+        }
+    )
+
+    entry department-overrides-g-department-count (
+        label: Department Overrides (&G_DEPARTMENT_COUNT.)
+        icon {
+            imageIconCssClasses: fa-map-marker-o
+        }
+        layout {
+            sequence: 7
+            parentEntry: @app-user
+        }
+        link {
+            target: {
+                page: 9994
+            }
+        }
+    )
+
+    entry fusion-cloud-applications (
+        label: Fusion Cloud Applications
+        icon {
+            imageIconCssClasses: fa-cloud
+        }
+        layout {
+            sequence: 5
+        }
+        link {
+            target: {
+                type: url
+                url: https://ibzsjb-test.fa.ocs.oraclecloud.com/fscmUI/faces/FuseOverview
+            }
+        }
+        userDefinedAttributes {
+            6: _blank
+        }
+    )
+
+    entry list_item (
+        label: ---
+        layout {
+            sequence: 20
+            parentEntry: @app-user
+        }
+        link {
+            target: {
+                type: url
+                url: separator
+            }
+        }
+        serverSideCondition {
+            type: userIsAuthenticated
+        }
+    )
+
+    entry sign-out (
+        label: Sign Out
+        icon {
+            imageIconCssClasses: fa-sign-out
+        }
+        layout {
+            sequence: 30
+            parentEntry: @app-user
+        }
+        link {
+            target: {
+                type: url
+                url: &LOGOUT_URL.
+            }
+        }
+        serverSideCondition {
+            type: userIsAuthenticated
+        }
+    )
+
+)
+
+list navigation-menu (
+    name: Navigation Menu
+
+    entry administration (
+        label: Administration
+        icon {
+            imageIconCssClasses: fa-folder-open-o
+        }
+        layout {
+            sequence: 2000
+        }
+    )
+
+    entry applicant-reports (
+        label: Applicant Reports
+        icon {
+            imageIconCssClasses: fa-folder-open-o
+        }
+        layout {
+            sequence: 1291
+        }
+    )
+
+    entry extensible-flexfields (
+        label: Extensible Flexfields
+        layout {
+            sequence: 1161
+            parentEntry: @mashup-views
+        }
+    )
+
+    entry financials (
+        label: Financials
+        layout {
+            sequence: 1141
+            parentEntry: @mashup-views
+        }
+    )
+
+    entry human-resources (
+        label: Human Resources
+        layout {
+            sequence: 1151
+            parentEntry: @mashup-views
+        }
+    )
+
+    entry mashup-views (
+        label: Mashup Views
+        icon {
+            imageIconCssClasses: fa-folder-open-o
+        }
+        layout {
+            sequence: 1031
+        }
+    )
+
+    entry notes-hub (
+        label: Notes Hub
+        layout {
+            sequence: 9090
+            parentEntry: @applicant-reports
+        }
+        link {
+            target: {
+                page: 35
+            }
+        }
+    )
+
+    entry override-grants (
+        label: Override Grants
+        layout {
+            sequence: 9120
+            parentEntry: @administration
+        }
+        isCurrent {
+            type: pages
+            pages: [
+                9995
+                9996
+                9995
+                9996
+            ]
+        }
+        link {
+            target: {
+                page: 9995
+            }
+        }
+    )
+
+)
+
+list quick-actions (
+    name: Quick Actions
+
+    entry assign-to-me (
+        label: Assign to Me
+        icon {
+            imageIconCssClasses: fa-user
+        }
+        layout {
+            sequence: 10
+        }
+        link {
+            target: {
+                type: url
+                url: javascript:showAction('action_self_assign')
+            }
+        }
+    )
+
+    entry change-category (
+        label: Change Category
+        icon {
+            imageIconCssClasses: fa-tag
+        }
+        layout {
+            sequence: 30
+        }
+        link {
+            target: {
+                type: url
+                url: javascript:showAction('action_change_category')
+            }
+        }
+    )
+
+    entry change-priority (
+        label: Change Priority
+        icon {
+            imageIconCssClasses: fa-flag
+        }
+        layout {
+            sequence: 40
+        }
+        link {
+            target: {
+                type: url
+                url: javascript:showAction('action_change_priority')
+            }
+        }
+    )
+
+    entry close-ticket (
+        label: Close Ticket
+        icon {
+            imageIconCssClasses: fa-trash-o
+        }
+        layout {
+            sequence: 80
+        }
+        link {
+            target: {
+                type: url
+                url: javascript:showAction('action_close')
+            }
+        }
+    )
+
+    entry mark-as-resolved (
+        label: Mark as Resolved
+        icon {
+            imageIconCssClasses: fa-check
+        }
+        layout {
+            sequence: 60
+        }
+        link {
+            target: {
+                type: url
+                url: javascript:showAction('action_resolved')
+            }
+        }
+    )
+
+    entry put-on-hold (
+        label: Put on Hold
+        icon {
+            imageIconCssClasses: fa-pause-circle-o
+        }
+        layout {
+            sequence: 50
+        }
+        link {
+            target: {
+                type: url
+                url: javascript:showAction('action_hold')
+            }
+        }
+    )
+
+    entry reassign (
+        label: Reassign
+        icon {
+            imageIconCssClasses: fa-arrows-h
+        }
+        layout {
+            sequence: 20
+        }
+        link {
+            target: {
+                type: url
+                url: javascript:showAction('action_reassign')
+            }
+        }
+    )
+
+    entry update-external-references (
+        label: Update External References
+        icon {
+            imageIconCssClasses: fa-life-ring
+        }
+        layout {
+            sequence: 70
+        }
+        link {
+            target: {
+                type: url
+                url: javascript:showAction('action_references')
+            }
+        }
+    )
+
+)
+
+list recruiting-rest-refresh-options (
+    name: Recruiting REST Refresh Options
+
+    entry full (
+        label: Full
+        layout {
+            sequence: 20
+        }
+        link {
+            target: {
+                type: url
+                url: javascript:refreshRecruiting('FULL')
+            }
+        }
+    )
+
+    entry incremental-past-4-hours (
+        label: incremental (Past 4 hours)
+        layout {
+            sequence: 10
+        }
+        link {
+            target: {
+                type: url
+                url:
+                    ```
+                    javascript:refreshRecruiting('INCREMENTAL')
+                    
+                    ```
+            }
+        }
+    )
+
+)
+

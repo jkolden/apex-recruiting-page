@@ -1,0 +1,482 @@
+page 9995 (
+    name: Override Grants
+    alias: OVERRIDE-GRANTS1
+    title: Override Grants
+    appearance {
+        pageTemplate: @/standard
+        templateOptions: #DEFAULT#
+    }
+    navigation {
+        cursorFocus: doNotFocusCursor
+    }
+    css {
+        inline:
+            ```css
+            #t_Button_navControl {
+                display: none !important;
+            }
+            
+            /* Breadcrumb container */
+            #gps-breadcrumb {
+              background: #fff;
+              border: 0;
+              border-bottom: 1px solid #dfe6e2;
+              box-shadow: none;
+            }
+            
+            #gps-breadcrumb .t-ButtonRegion-wrap {
+              min-height: auto;
+              padding: 10px 24px;
+            }
+            
+            /* Remove unused columns */
+            #gps-breadcrumb .t-ButtonRegion-col--left,
+            #gps-breadcrumb .t-ButtonRegion-col--right {
+              display: none;
+            }
+            
+            /* Breadcrumb layout */
+            #gps-breadcrumb .t-Breadcrumb {
+              margin: 0;
+              padding: 0;
+            }
+            
+            /* Home link */
+            #gps-breadcrumb .t-Breadcrumb-item a.t-Breadcrumb-label,
+            #gps-breadcrumb .t-Breadcrumb-item a.t-Breadcrumb-label:visited {
+              color: #315c45;
+              font-size: 0.9375rem;
+              font-weight: 600;
+              text-decoration: none;
+            }
+            
+            #gps-breadcrumb .t-Breadcrumb-item a.t-Breadcrumb-label:hover {
+              color: #244735;
+              text-decoration: underline;
+            }
+            
+            /* Current page */
+            #gps-breadcrumb .t-Breadcrumb-item.is-active .t-Breadcrumb-label {
+              margin: 0;
+              color: #1f2933;
+              font-size: 0.9375rem;
+              font-weight: 700;
+              line-height: 1.4;
+            }
+            
+            /* Divider between breadcrumb items */
+            #gps-breadcrumb .t-Breadcrumb-item::after {
+              color: #a5afa9;
+              font-weight: 400;
+            }
+            ```
+    }
+    security {
+        pageAccessProtection: argumentsMustHaveChecksum
+        formAutoComplete: false
+    }
+
+    region breadcrumb (
+        name: breadcrumb
+        type: breadcrumb
+        source {
+            breadcrumb: @breadcrumb
+        }
+        layout {
+            sequence: 20
+            slot: breadcrumbBar
+        }
+        appearance {
+            template: @/buttons-container
+            templateOptions: #DEFAULT#
+        }
+        advanced {
+            htmlDomId: gps-breadcrumb
+        }
+        componentAppearance {
+            breadcrumbTemplate: @/breadcrumb
+            templateOptions: #DEFAULT#
+        }
+    )
+
+    region override-grants (
+        name: Override Grants
+        type: interactiveReport
+        source {
+            location: localDatabase
+            type: sqlQuery
+            sqlQuery:
+                ```sql
+                SELECT g.id,
+                       g.app_user,
+                       g.dept_name,
+                       case when  g.is_active = 'Y' then 'fa fa-check' end as is_active,
+                       rec_emp.DISPLAY_NAME                                                 AS recruiter_name,
+                       g.recruiter_id,
+                       hm_emp.DISPLAY_NAME                                                  AS hiring_manager_name,
+                       g.hiring_mgr_id,
+                       CASE
+                           WHEN g.recruiter_id IS NULL AND g.hiring_mgr_id IS NULL
+                               THEN 'All reqs in dept'
+                           WHEN g.recruiter_id IS NOT NULL AND g.hiring_mgr_id IS NULL
+                               THEN 'Recruiter: ' || rec_emp.DISPLAY_NAME
+                           WHEN g.recruiter_id IS NULL AND g.hiring_mgr_id IS NOT NULL
+                               THEN 'Hiring Mgr: ' || hm_emp.DISPLAY_NAME
+                           ELSE 'Recruiter: ' || rec_emp.DISPLAY_NAME
+                             || ' OR Hiring Mgr: ' || hm_emp.DISPLAY_NAME
+                       END                                                                  AS access_summary,
+                       g.granted_by,
+                       g.granted_ts,
+                       g.notes
+                  FROM rec_dept_grant g
+                  LEFT JOIN FBX_HCM_EMPLOYEE rec_emp ON rec_emp.PERSON_ID = g.recruiter_id
+                  LEFT JOIN FBX_HCM_EMPLOYEE hm_emp  ON hm_emp.PERSON_ID  = g.hiring_mgr_id
+                 ORDER BY g.app_user, g.dept_name;
+                ```
+        }
+        layout {
+            sequence: 10
+            slot: body
+        }
+        appearance {
+            template: @/interactive-report
+            templateOptions: [
+                #DEFAULT#
+                t-IRR-region--hideHeader js-addHiddenHeadingRoleDesc
+            ]
+        }
+        link {
+            linkColumn: customTarget
+            target: {
+                page: 9996
+                items: {
+                    P9996_ID: \#ID#\
+                }
+                action: resetPagination
+            }
+            linkIcon: <span role="img" aria-label="Edit" class="fa fa-edit" title="Edit"></span>
+        }
+        pagination {
+            type: rowRangesXToY
+        }
+        messages {
+            whenNoDataFound: No data found.
+            whenMoreDataFound: The maximum row count for this report is #MAX_ROW_COUNT# rows.  Please apply a filter to reduce the number of records in your query.
+        }
+        searchBar {
+            rowsPerPageSelector: true
+        }
+        actionsMenu {
+            rowsPerPage: false
+            savePublicReport: true
+        }
+        advanced {
+            savedReportMappingIdentifier: 155669990335726123
+        }
+
+        column ACCESS_SUMMARY (
+            type: plainText
+            heading {
+                heading: Access Summary
+            }
+            layout {
+                sequence: 39
+            }
+            source {
+                dataType: STRING
+            }
+            advanced {
+                endUserAlias: L
+            }
+        )
+
+        column APP_USER (
+            type: plainText
+            heading {
+                heading: App User
+            }
+            layout {
+                sequence: 2
+            }
+            source {
+                dataType: STRING
+            }
+            advanced {
+                endUserAlias: B
+            }
+        )
+
+        column DEPT_NAME (
+            type: plainText
+            heading {
+                heading: Dept Name
+            }
+            layout {
+                sequence: 3
+            }
+            source {
+                dataType: STRING
+            }
+            advanced {
+                endUserAlias: C
+            }
+        )
+
+        column GRANTED_BY (
+            type: plainText
+            heading {
+                heading: Granted By
+            }
+            layout {
+                sequence: 7
+            }
+            source {
+                dataType: STRING
+            }
+            advanced {
+                endUserAlias: G
+            }
+        )
+
+        column GRANTED_TS (
+            type: plainText
+            heading {
+                heading: Granted Ts
+            }
+            layout {
+                sequence: 8
+            }
+            source {
+                dataType: DATE
+            }
+            advanced {
+                endUserAlias: H
+            }
+        )
+
+        column HIRING_MANAGER_NAME (
+            type: plainText
+            heading {
+                heading: Hiring Manager Name
+            }
+            layout {
+                sequence: 29
+            }
+            source {
+                dataType: STRING
+            }
+            advanced {
+                endUserAlias: K
+            }
+        )
+
+        column HIRING_MGR_ID (
+            type: plainText
+            heading {
+                heading: Hiring Mgr ID
+                alignment: end
+            }
+            layout {
+                sequence: 5
+                columnAlignment: end
+            }
+            source {
+                dataType: NUMBER
+            }
+            advanced {
+                endUserAlias: E
+            }
+        )
+
+        column ID (
+            type: hidden
+            heading {
+                heading: ID
+            }
+            layout {
+                sequence: 0
+            }
+            source {
+                primaryKey: true
+                dataType: NUMBER
+            }
+            advanced {
+                endUserAlias: A
+            }
+        )
+
+        column IS_ACTIVE (
+            type: plainText
+            heading {
+                heading: Is Active
+                alignment: center
+            }
+            layout {
+                sequence: 6
+                columnAlignment: center
+            }
+            columnFormatting {
+                htmlExpression: <span class="#IS_ACTIVE#"></span>
+            }
+            source {
+                dataType: STRING
+            }
+            advanced {
+                endUserAlias: F
+            }
+        )
+
+        column NOTES (
+            type: plainText
+            heading {
+                heading: Notes
+            }
+            layout {
+                sequence: 9
+            }
+            source {
+                dataType: STRING
+            }
+            advanced {
+                endUserAlias: I
+            }
+        )
+
+        column RECRUITER_ID (
+            type: plainText
+            heading {
+                heading: Recruiter ID
+                alignment: end
+            }
+            layout {
+                sequence: 4
+                columnAlignment: end
+            }
+            source {
+                dataType: NUMBER
+            }
+            advanced {
+                endUserAlias: D
+            }
+        )
+
+        column RECRUITER_NAME (
+            type: plainText
+            heading {
+                heading: Recruiter Name
+            }
+            layout {
+                sequence: 19
+            }
+            source {
+                dataType: STRING
+            }
+            advanced {
+                endUserAlias: J
+            }
+        )
+
+        page {
+            borderWidth: 0.5
+            borderColor: #666666
+        }
+        pageHeader {
+            pageHeaderText: Override Grants
+        }
+
+        savedReport 1556771 (
+            visibility: primaryDefault
+            view {
+                rowsPerPage: 50
+            }
+
+            displayColumn ACCESS_SUMMARY (
+                sequence: 9
+            )
+
+            displayColumn APP_USER (
+                sequence: 1
+            )
+
+            displayColumn DEPT_NAME (
+                sequence: 2
+            )
+
+            displayColumn GRANTED_BY (
+                sequence: 4
+            )
+
+            displayColumn GRANTED_TS (
+                sequence: 5
+            )
+
+            displayColumn HIRING_MANAGER_NAME (
+                sequence: 8
+            )
+
+            displayColumn IS_ACTIVE (
+                sequence: 3
+            )
+
+            displayColumn NOTES (
+                sequence: 6
+            )
+
+            displayColumn RECRUITER_NAME (
+                sequence: 7
+            )
+
+        )
+
+    )
+
+    button create (
+        buttonName: CREATE
+        label: Create
+        layout {
+            sequence: 10
+            region: @override-grants
+            slot: rightOfInteractiveReportSearchBar
+        }
+        appearance {
+            buttonTemplate: @/text
+            hot: true
+            templateOptions: #DEFAULT#
+        }
+        behavior {
+            action: redirectThisApp
+            target: {
+                page: 9996
+                clearCache: 9996
+            }
+            warnOnUnsavedChanges: doNotCheck
+        }
+    )
+
+    dynamicAction edit-report-dialog-closed (
+        name: Edit Report - Dialog Closed
+        execution {
+            sequence: 10
+        }
+        when {
+            event: apexafterclosedialog
+            selectionType: region
+            region: @override-grants
+        }
+
+        action native-refresh (
+            action: refresh
+            affectedElements {
+                selectionType: region
+                region: @override-grants
+            }
+            execution {
+                sequence: 10
+                fireOnInit: false
+            }
+        )
+
+    )
+
+)
+

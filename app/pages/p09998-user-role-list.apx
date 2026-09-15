@@ -1,0 +1,113 @@
+page 9998 (
+    name: My Roles
+    alias: USER-ROLE-LIST
+    title: My Roles
+    appearance {
+        pageMode: modalDialog
+        dialogTemplate: @/drawer
+        templateOptions: [
+            #DEFAULT#
+            js-dialog-class-t-Drawer--pullOutEnd
+        ]
+    }
+    navigation {
+        cursorFocus: doNotFocusCursor
+    }
+    security {
+        pageAccessProtection: argumentsMustHaveChecksum
+        formAutoComplete: false
+    }
+
+    region user-role-list (
+        name: User Role List
+        type: themeTemplateComponent/contentRow
+        source {
+            location: localDatabase
+            type: sqlQuery
+            sqlQuery:
+                ```sql
+                SELECT ROWNUM AS "ID",
+                       role_code,
+                       source
+                  FROM (
+                        -- Priority 1: REST (APEX collection exists = REST succeeded at login)
+                        SELECT c001 AS role_code,
+                               'REST (Real-Time)' AS source
+                          FROM apex_collections
+                         WHERE collection_name = 'FUSION_USER_ROLES'
+                        UNION ALL
+                        -- Priority 2: BIP (only if collection does NOT exist = REST failed)
+                        SELECT r.role_common_name AS role_code,
+                               'BIP (Daily Snapshot)' AS source
+                          FROM fa_user_accounts a
+                          JOIN fa_user_roles    r ON r.user_guid = a.user_guid
+                         WHERE UPPER(a.username) = UPPER(:APP_USER)
+                           AND (r.effective_end_date IS NULL
+                                OR r.effective_end_date > SYSTIMESTAMP)
+                           AND NOT EXISTS (
+                                SELECT 1
+                                  FROM apex_collections
+                                 WHERE collection_name = 'FUSION_USER_ROLES'
+                               )
+                        ORDER BY role_code
+                       )
+                
+                ```
+        }
+        layout {
+            sequence: 10
+            slot: contentBody
+        }
+        appearance {
+            template: @/blank-with-attributes-no-grid
+            templateOptions: #DEFAULT#
+        }
+        accessibility {
+            landmarkType: region
+        }
+        componentAppearance {
+            display: report
+        }
+        settings {
+            title: &ROLE_CODE.
+            miscellaneous: &SOURCE.
+        }
+        pagination {
+            entitiesPerPage: 25
+            showTotalCount: true
+        }
+
+        column ID (
+            layout {
+                sequence: 10
+            }
+            source {
+                databaseColumn: ID
+                dataType: number
+            }
+        )
+
+        column ROLE_CODE (
+            layout {
+                sequence: 20
+            }
+            source {
+                databaseColumn: ROLE_CODE
+                dataType: varchar2
+            }
+        )
+
+        column SOURCE (
+            layout {
+                sequence: 30
+            }
+            source {
+                databaseColumn: SOURCE
+                dataType: varchar2
+            }
+        )
+
+    )
+
+)
+
