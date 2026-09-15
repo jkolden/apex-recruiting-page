@@ -68,10 +68,14 @@ CREATE OR REPLACE PACKAGE BODY pkg_eff_update AS
         -- REST returns camelCase names; map to PEI_INFO/NUM/DATE columns.
         -- ==================================================================
         -- REST camelCase names mapped to PEI columns for "Additional GCS
-        -- Person Data" context.  Shared field labels (certification, sled,
-        -- etc.) reuse the same REST names validated in the GCS Recruiting
-        -- Details POC.  Fields unique to this context (marked TODO) are
-        -- best guesses — verify with a GET if any return NULL unexpectedly.
+        -- Person Data" context.  Partially verified via GET 2026-09-15.
+        -- Key differences from GCS Recruiting Details:
+        --   certification  -> nationalBoardCertified
+        --   personalLeaveUsed -> personalLeave
+        --   vacationCarryoverExtYN -> vacationCarryoverExtensionYOrN
+        -- New REST fields not in ext_flex_person_data_v (context modified):
+        --   paraProfessionalHq, busDriverYearsOfExperience,
+        --   busAideYearsOfExperience — PEI column mapping unknown.
         -- ==================================================================
         MERGE INTO ext_flex_stg t
         USING (
@@ -93,31 +97,32 @@ CREATE OR REPLACE PACKAGE BODY pkg_eff_update AS
                     effective_start_date VARCHAR2(50)   PATH '$.EffectiveStartDate',
                     effective_end_date   VARCHAR2(50)   PATH '$.EffectiveEndDate',
                     -- Character fields -> PEI_INFO1..16 (Additional GCS Person Data)
-                    pei_info1            VARCHAR2(4000) PATH '$.teacherSubjectArea',
-                    pei_info2            VARCHAR2(4000) PATH '$.smartfindClassCode',      -- TODO verify
-                    pei_info3            VARCHAR2(4000) PATH '$.bankedVacation',           -- TODO verify
-                    pei_info4            VARCHAR2(4000) PATH '$.contractType',
-                    pei_info5            VARCHAR2(4000) PATH '$.contractStipulation1',     -- TODO verify (was contractStip1 in Recruiting Details)
-                    pei_info6            VARCHAR2(4000) PATH '$.contractStipulation2',     -- TODO verify
-                    pei_info7            VARCHAR2(4000) PATH '$.contractStipulation3',     -- TODO verify
-                    pei_info8            VARCHAR2(4000) PATH '$.vacationCarryoverExtYN',   -- TODO verify
-                    pei_info9            VARCHAR2(4000) PATH '$.rehireEligible',           -- TODO verify (was rehireEligibility in Recruiting Details)
-                    pei_info10           VARCHAR2(4000) PATH '$.processingOwner',
-                    pei_info11           VARCHAR2(4000) PATH '$.workKeys',
-                    pei_info12           VARCHAR2(4000) PATH '$.referenceCheck',
-                    pei_info13           VARCHAR2(4000) PATH '$.sled',
-                    pei_info14           VARCHAR2(4000) PATH '$.certification',
-                    pei_info15           VARCHAR2(4000) PATH '$.additionalFte',            -- char column in this context
-                    pei_info16           VARCHAR2(4000) PATH '$.interviewNotes',
+                    -- Verified via GET 2026-09-15 unless noted
+                    pei_info1            VARCHAR2(4000) PATH '$.teacherSubjectArea',           -- verified
+                    pei_info2            VARCHAR2(4000) PATH '$.smartfindClassCode',            -- verified
+                    pei_info3            VARCHAR2(4000) PATH '$.bankedVacation',                -- verified
+                    pei_info4            VARCHAR2(4000) PATH '$.contractType',                  -- verified
+                    pei_info5            VARCHAR2(4000) PATH '$.contractStipulation1',          -- verified
+                    pei_info6            VARCHAR2(4000) PATH '$.contractStipulation2',          -- verified
+                    pei_info7            VARCHAR2(4000) PATH '$.contractStipulation3',          -- verified
+                    pei_info8            VARCHAR2(4000) PATH '$.vacationCarryoverExtensionYOrN', -- verified
+                    pei_info9            VARCHAR2(4000) PATH '$.rehireEligible',                -- unverified (NULL for test person)
+                    pei_info10           VARCHAR2(4000) PATH '$.processingOwner',               -- unverified (NULL)
+                    pei_info11           VARCHAR2(4000) PATH '$.workKeys',                      -- unverified (NULL)
+                    pei_info12           VARCHAR2(4000) PATH '$.referenceCheck',                -- unverified (NULL)
+                    pei_info13           VARCHAR2(4000) PATH '$.sled',                          -- unverified (NULL)
+                    pei_info14           VARCHAR2(4000) PATH '$.nationalBoardCertified',        -- verified (was "certification" in Recruiting Details)
+                    pei_info15           VARCHAR2(4000) PATH '$.additionalFte',                 -- unverified (NULL)
+                    pei_info16           VARCHAR2(4000) PATH '$.interviewNotes',                -- unverified (NULL)
                     -- Date field -> PEI_DATE1
-                    pei_date1            VARCHAR2(50)   PATH '$.effectiveDate',            -- TODO verify (was proposedEffectiveDate in Recruiting Details)
+                    pei_date1            VARCHAR2(50)   PATH '$.effectiveDate',                 -- unverified (NULL)
                     -- Number fields -> PEI_NUM1..6 (stored as VARCHAR2 in ext_flex_stg)
-                    pei_num1             VARCHAR2(50)   PATH '$.teacherYearsOfExperience',
-                    pei_num2             VARCHAR2(50)   PATH '$.cateExperience',
-                    pei_num3             VARCHAR2(50)   PATH '$.personalLeaveUsed',        -- TODO verify
-                    pei_num4             VARCHAR2(50)   PATH '$.fte',
-                    pei_num5             VARCHAR2(50)   PATH '$.educatorId',
-                    pei_num6             VARCHAR2(50)   PATH '$.teacherAssessmentScore'
+                    pei_num1             VARCHAR2(50)   PATH '$.teacherYearsOfExperience',      -- verified
+                    pei_num2             VARCHAR2(50)   PATH '$.cateExperience',                -- verified
+                    pei_num3             VARCHAR2(50)   PATH '$.personalLeave',                 -- verified (was personalLeaveUsed guess)
+                    pei_num4             VARCHAR2(50)   PATH '$.fte',                           -- unverified (NULL)
+                    pei_num5             VARCHAR2(50)   PATH '$.educatorId',                    -- verified
+                    pei_num6             VARCHAR2(50)   PATH '$.teacherAssessmentScore'         -- unverified (NULL)
                 )
             ) jt
             WHERE jt.person_extra_info_id IS NOT NULL

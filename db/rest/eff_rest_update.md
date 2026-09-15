@@ -28,9 +28,10 @@ Full GET URL:
   Dates come from the GET response (e.g., `2026-08-27` and `4712-12-31`).
 - **Credential**: `gcs_reports` (same as other REST calls)
 
-## Attribute Mapping (REST camelCase names)
+## Attribute Mapping — GCS Recruiting Details (POC context)
 
-The REST API exposes friendly names, NOT PeiInformation* columns:
+The REST API exposes friendly names, NOT PeiInformation* columns.
+This table documents the **GCS Recruiting Details** context (validated via POC):
 
 | REST Attribute | EFF Segment | Report Column | Type |
 |---|---|---|---|
@@ -58,17 +59,59 @@ The REST API exposes friendly names, NOT PeiInformation* columns:
 | `cateExperience` | PEI_INFORMATION_NUMBER5 | CATE Experience | Number |
 | `fte` | PEI_INFORMATION_NUMBER6 | FTE | Number |
 
-## Example PATCH
+## Attribute Mapping — Additional GCS Person Data (active context)
+
+Verified via GET 2026-09-15 for PersonId 300000041951212. PEI column positions differ
+from GCS Recruiting Details. Fields NULL for the test person are marked "unverified."
+
+| REST Attribute | PEI Column | Verified? | Notes |
+|---|---|---|---|
+| `teacherSubjectArea` | PEI_INFO1 | YES | "006" |
+| `smartfindClassCode` | PEI_INFO2 | YES | "2" |
+| `bankedVacation` | PEI_INFO3 | YES | "N" |
+| `contractType` | PEI_INFO4 | YES | "A3F" |
+| `contractStipulation1` | PEI_INFO5 | YES | "18" (not contractStip1) |
+| `contractStipulation2` | PEI_INFO6 | YES | "14" |
+| `contractStipulation3` | PEI_INFO7 | YES | "14" |
+| `vacationCarryoverExtensionYOrN` | PEI_INFO8 | YES | "N" (not vacationCarryoverExtYN) |
+| `rehireEligible` | PEI_INFO9 | no | NULL for test person |
+| `processingOwner` | PEI_INFO10 | no | NULL |
+| `workKeys` | PEI_INFO11 | no | NULL |
+| `referenceCheck` | PEI_INFO12 | no | NULL |
+| `sled` | PEI_INFO13 | no | NULL |
+| `nationalBoardCertified` | PEI_INFO14 | YES | "EXPIRED" (NOT `certification`) |
+| `additionalFte` | PEI_INFO15 | no | NULL |
+| `interviewNotes` | PEI_INFO16 | no | NULL |
+| `effectiveDate` | PEI_DATE1 | no | NULL |
+| `teacherYearsOfExperience` | PEI_NUM1 | YES | 9 |
+| `cateExperience` | PEI_NUM2 | YES | 9 |
+| `personalLeave` | PEI_NUM3 | YES | 9 (NOT `personalLeaveUsed`) |
+| `fte` | PEI_NUM4 | no | NULL |
+| `educatorId` | PEI_NUM5 | YES | 12345 |
+| `teacherAssessmentScore` | PEI_NUM6 | no | NULL |
+
+**New fields discovered (not in ext_flex_person_data_v — context was modified):**
+
+| REST Attribute | Value | PEI Column | Notes |
+|---|---|---|---|
+| `paraProfessionalHq` | "Exempt" | unknown | New char segment |
+| `busDriverYearsOfExperience` | 9 | unknown | New number segment |
+| `busAideYearsOfExperience` | 9 | unknown | New number segment |
+
+These 3 fields are NOT in the refresh json_table. The view mapping (`ext_flex_person_data_v`)
+needs updating to include them once their PEI column positions are confirmed.
+
+## Example PATCH (Additional GCS Person Data)
 
 ```
-PATCH /hcmRestApi/resources/11.13.18.05/personExtraInformation/300000041951212/child/personEFF/300000041951212/child/PersonExtraInformationContextGCS__Recruiting__DetailsprivateVO/{hex_row_key}
+PATCH /hcmRestApi/resources/11.13.18.05/personExtraInformation/300000041951212/child/personEFF/300000041951212/child/PersonExtraInformationContextAdditional__GCS__Person__DataprivateVO/{hex_row_key}
 
 Headers:
   Content-Type: application/json
-  Effective-Of: RangeMode=UPDATE;RangeStartDate=2026-08-27;RangeEndDate=4712-12-31
+  Effective-Of: RangeMode=UPDATE;RangeStartDate=2026-09-15;RangeEndDate=4712-12-31
 
 Body:
-  {"teacherAssessmentScore": 90}
+  {"nationalBoardCertified": "Y"}
 ```
 
 ## Errors Encountered During POC
