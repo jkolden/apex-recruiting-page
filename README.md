@@ -43,6 +43,7 @@ Oracle APEX application for managing the Greenville County Schools recruiting pi
 | 100 | Reference Correction | Public-facing form for candidates to correct reference info |
 | 101 | Reference Confirmation | Modal comparing original vs. edited reference values |
 | 4004 | Reference Answers | Modal showing pivoted survey responses with star ratings |
+| 30 | Download Attachment | Streams a Fusion attachment binary to the browser — no visible UI (see below) |
 | 9994 | My Departments | Drawer showing user's department assignments + overrides |
 | 9995 | Override Grants (IR) | Admin IR for department-level access overrides |
 | 9996 | Override Grants (Form) | Form drawer for creating/editing override grants |
@@ -64,7 +65,9 @@ Score applicants 1-5 with a recommendation level (Highly Recommended / Recommend
 Generates a secure one-time URL and emails it to candidates so they can correct their reference contact information. Public-facing pages 100/101 require no authentication. Powered by `pkg_ref_correction`.
 
 ### Attachment Viewer
-Modal that lists candidate attachments fetched from Fusion via REST with file type icons and download links.
+Modal that lists candidate attachments fetched from Fusion via REST with file type icons and download links. Powered by `pkg_app_attachments` ([`db/rest/`](db/rest/)).
+
+**Page 30 (Download Attachment)** is a critical hidden dependency — it has no visible UI but is the download endpoint for every attachment link. The page contains only two hidden items (`P30_JOB_APPLICATION_ID`, `P30_ATTACHED_DOCUMENT_ID`) and a Before Header process that calls `pkg_app_attachments.download_attachment()` to stream the binary. Both items must have **Value Protected = No** so URL parameters are accepted without checksum. If this page is accidentally deleted, attachments will fail with `ERR-1002 Unable to find item ID`. Recovery script: [`db/rest/f121_page_30.sql`](db/rest/f121_page_30.sql).
 
 ### Notes (Two Levels)
 - **Candidate Notes** -- tied to a specific job application
@@ -131,6 +134,19 @@ The view chain: `FBX_QSTNR_QUESTION` → `FBX_QSTNR_RESPONSE` → `FBX_QSTNR_ANS
 
 `refresh_all` calls all three procedures and runs daily at 14:00 UTC via `JOB_REST_RECRUITING_DAILY`.
 
+### Attachment Download ([`db/rest/`](db/rest/))
+
+`pkg_app_attachments` fetches candidate attachments from Fusion Cloud via REST and streams binaries to the browser.
+
+| Procedure | Purpose |
+|---|---|
+| `list_attachments(p_job_application_id)` | Returns JSON array of FILE-type attachments with metadata and download URLs |
+| `download_attachment(p_job_application_id, p_attached_document_id)` | Fetches binary via enclosure URL (with base64 fallback) and streams to browser |
+
+API endpoint: `GET /hcmRestApi/resources/11.13.18.05/recruitingJobApplications/{id}/child/attachments`
+
+Recovery script for page 30: [`db/rest/f121_page_30.sql`](db/rest/f121_page_30.sql)
+
 ### Other PL/SQL Packages (not in this repo)
 
 | Package | Purpose |
@@ -138,7 +154,6 @@ The view chain: `FBX_QSTNR_QUESTION` → `FBX_QSTNR_RESPONSE` → `FBX_QSTNR_ANS
 | `pkg_rec_move` | Move applicant between phases/states via REST POST |
 | `pkg_ref_correction` | Token generation, validation, and save corrections |
 | `pkg_app_security` | Role checks, login processing, APEX collection population |
-| `pkg_app_attachments` | Fetch attachments from Fusion via REST |
 | `rec_rls_pkg` | VPD predicate for row-level security |
 | `pkg_bicc_common` | Shared BICC utilities (ZIP extraction, safe type conversion) |
 
