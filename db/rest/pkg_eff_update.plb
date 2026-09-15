@@ -65,17 +65,15 @@ CREATE OR REPLACE PACKAGE BODY pkg_eff_update AS
         END IF;
 
         -- MERGE REST response into ext_flex_stg.
-        -- REST returns camelCase names; map to PEI_INFO/NUM/DATE columns.
         -- ==================================================================
-        -- REST camelCase names mapped to PEI columns for "Additional GCS
-        -- Person Data" context.  Partially verified via GET 2026-09-15.
-        -- Key differences from GCS Recruiting Details:
-        --   certification  -> nationalBoardCertified
-        --   personalLeaveUsed -> personalLeave
-        --   vacationCarryoverExtYN -> vacationCarryoverExtensionYOrN
-        -- New REST fields not in ext_flex_person_data_v (context modified):
-        --   paraProfessionalHq, busDriverYearsOfExperience,
-        --   busAideYearsOfExperience — PEI column mapping unknown.
+        -- Authoritative mapping from /describe endpoint (2026-09-15).
+        -- Context only has 10 char + 6 number attributes (no date fields).
+        -- PEI_INFO11-16 and PEI_DATE1 do NOT exist in current context —
+        -- UPDATE leaves them untouched so BIP-populated data is preserved.
+        --
+        -- WARNING: ext_flex_person_data_v is OUTDATED — it maps segments
+        -- that no longer exist (rehireEligible, sled, referenceCheck, etc.)
+        -- and has wrong PEI column assignments. View needs rebuilding.
         -- ==================================================================
         MERGE INTO ext_flex_stg t
         USING (
@@ -86,9 +84,7 @@ CREATE OR REPLACE PACKAGE BODY pkg_eff_update AS
                 jt.effective_end_date,
                 jt.pei_info1,  jt.pei_info2,  jt.pei_info3,  jt.pei_info4,
                 jt.pei_info5,  jt.pei_info6,  jt.pei_info7,  jt.pei_info8,
-                jt.pei_info9,  jt.pei_info10, jt.pei_info11, jt.pei_info12,
-                jt.pei_info13, jt.pei_info14, jt.pei_info15, jt.pei_info16,
-                jt.pei_date1,
+                jt.pei_info9,  jt.pei_info10,
                 jt.pei_num1, jt.pei_num2, jt.pei_num3,
                 jt.pei_num4, jt.pei_num5, jt.pei_num6
             FROM json_table(l_response, '$.items[0]'
@@ -96,33 +92,26 @@ CREATE OR REPLACE PACKAGE BODY pkg_eff_update AS
                     person_extra_info_id NUMBER         PATH '$.PersonExtraInfoId',
                     effective_start_date VARCHAR2(50)   PATH '$.EffectiveStartDate',
                     effective_end_date   VARCHAR2(50)   PATH '$.EffectiveEndDate',
-                    -- Character fields -> PEI_INFO1..16 (Additional GCS Person Data)
-                    -- Verified via GET 2026-09-15 unless noted
-                    pei_info1            VARCHAR2(4000) PATH '$.teacherSubjectArea',           -- verified
-                    pei_info2            VARCHAR2(4000) PATH '$.smartfindClassCode',            -- verified
-                    pei_info3            VARCHAR2(4000) PATH '$.bankedVacation',                -- verified
-                    pei_info4            VARCHAR2(4000) PATH '$.contractType',                  -- verified
-                    pei_info5            VARCHAR2(4000) PATH '$.contractStipulation1',          -- verified
-                    pei_info6            VARCHAR2(4000) PATH '$.contractStipulation2',          -- verified
-                    pei_info7            VARCHAR2(4000) PATH '$.contractStipulation3',          -- verified
-                    pei_info8            VARCHAR2(4000) PATH '$.vacationCarryoverExtensionYOrN', -- verified
-                    pei_info9            VARCHAR2(4000) PATH '$.rehireEligible',                -- unverified (NULL for test person)
-                    pei_info10           VARCHAR2(4000) PATH '$.processingOwner',               -- unverified (NULL)
-                    pei_info11           VARCHAR2(4000) PATH '$.workKeys',                      -- unverified (NULL)
-                    pei_info12           VARCHAR2(4000) PATH '$.referenceCheck',                -- unverified (NULL)
-                    pei_info13           VARCHAR2(4000) PATH '$.sled',                          -- unverified (NULL)
-                    pei_info14           VARCHAR2(4000) PATH '$.nationalBoardCertified',        -- verified (was "certification" in Recruiting Details)
-                    pei_info15           VARCHAR2(4000) PATH '$.additionalFte',                 -- unverified (NULL)
-                    pei_info16           VARCHAR2(4000) PATH '$.interviewNotes',                -- unverified (NULL)
-                    -- Date field -> PEI_DATE1
-                    pei_date1            VARCHAR2(50)   PATH '$.effectiveDate',                 -- unverified (NULL)
-                    -- Number fields -> PEI_NUM1..6 (stored as VARCHAR2 in ext_flex_stg)
-                    pei_num1             VARCHAR2(50)   PATH '$.teacherYearsOfExperience',      -- verified
-                    pei_num2             VARCHAR2(50)   PATH '$.cateExperience',                -- verified
-                    pei_num3             VARCHAR2(50)   PATH '$.personalLeave',                 -- verified (was personalLeaveUsed guess)
-                    pei_num4             VARCHAR2(50)   PATH '$.fte',                           -- unverified (NULL)
-                    pei_num5             VARCHAR2(50)   PATH '$.educatorId',                    -- verified
-                    pei_num6             VARCHAR2(50)   PATH '$.teacherAssessmentScore'         -- unverified (NULL)
+                    -- Char: PEI_INFORMATION1-10 (all from describe FND_ACFF_ColumnName)
+                    pei_info1  VARCHAR2(4000) PATH '$.teacherSubjectArea',            -- PEI_INFORMATION1
+                    pei_info2  VARCHAR2(4000) PATH '$.smartfindClassCode',             -- PEI_INFORMATION2
+                    pei_info3  VARCHAR2(4000) PATH '$.bankedVacation',                 -- PEI_INFORMATION3
+                    pei_info4  VARCHAR2(4000) PATH '$.contractType',                   -- PEI_INFORMATION4
+                    pei_info5  VARCHAR2(4000) PATH '$.contractStipulation1',           -- PEI_INFORMATION5
+                    pei_info6  VARCHAR2(4000) PATH '$.contractStipulation2',           -- PEI_INFORMATION6
+                    pei_info7  VARCHAR2(4000) PATH '$.contractStipulation3',           -- PEI_INFORMATION7
+                    pei_info8  VARCHAR2(4000) PATH '$.vacationCarryoverExtensionYOrN', -- PEI_INFORMATION8
+                    pei_info9  VARCHAR2(4000) PATH '$.nationalBoardCertified',         -- PEI_INFORMATION9
+                    pei_info10 VARCHAR2(4000) PATH '$.paraProfessionalHq',             -- PEI_INFORMATION10
+                    -- No PEI_INFORMATION11-16 (segments removed from context)
+                    -- No PEI_INFORMATION_DATE1 (no date fields in context)
+                    -- Number: PEI_INFORMATION_NUMBER1-6
+                    pei_num1   VARCHAR2(50)   PATH '$.teacherYearsOfExperience',       -- PEI_INFORMATION_NUMBER1
+                    pei_num2   VARCHAR2(50)   PATH '$.cateExperience',                 -- PEI_INFORMATION_NUMBER2
+                    pei_num3   VARCHAR2(50)   PATH '$.personalLeave',                  -- PEI_INFORMATION_NUMBER3
+                    pei_num4   VARCHAR2(50)   PATH '$.busDriverYearsOfExperience',     -- PEI_INFORMATION_NUMBER4
+                    pei_num5   VARCHAR2(50)   PATH '$.busAideYearsOfExperience',       -- PEI_INFORMATION_NUMBER5
+                    pei_num6   VARCHAR2(50)   PATH '$.educatorId'                      -- PEI_INFORMATION_NUMBER6
                 )
             ) jt
             WHERE jt.person_extra_info_id IS NOT NULL
@@ -137,10 +126,7 @@ CREATE OR REPLACE PACKAGE BODY pkg_eff_update AS
             t.pei_info5  = s.pei_info5,   t.pei_info6  = s.pei_info6,
             t.pei_info7  = s.pei_info7,   t.pei_info8  = s.pei_info8,
             t.pei_info9  = s.pei_info9,   t.pei_info10 = s.pei_info10,
-            t.pei_info11 = s.pei_info11,  t.pei_info12 = s.pei_info12,
-            t.pei_info13 = s.pei_info13,  t.pei_info14 = s.pei_info14,
-            t.pei_info15 = s.pei_info15,  t.pei_info16 = s.pei_info16,
-            t.pei_date1  = s.pei_date1,
+            -- pei_info11-16, pei_date1 NOT updated (segments removed from context)
             t.pei_num1   = s.pei_num1,    t.pei_num2   = s.pei_num2,
             t.pei_num3   = s.pei_num3,    t.pei_num4   = s.pei_num4,
             t.pei_num5   = s.pei_num5,    t.pei_num6   = s.pei_num6,
@@ -155,26 +141,20 @@ CREATE OR REPLACE PACKAGE BODY pkg_eff_update AS
             effective_end_date,
             pei_info1,  pei_info2,  pei_info3,  pei_info4,
             pei_info5,  pei_info6,  pei_info7,  pei_info8,
-            pei_info9,  pei_info10, pei_info11, pei_info12,
-            pei_info13, pei_info14, pei_info15, pei_info16,
-            pei_date1,
-            pei_date2,
+            pei_info9,  pei_info10,
             pei_num1, pei_num2, pei_num3, pei_num4, pei_num5, pei_num6,
             load_ts
         ) VALUES (
             s.person_extra_info_id,
             s.person_id,
-            NULL,                        -- candidate_number: BIP will populate
-            'Additional GCS Person Data',  -- information_type
-            'Additional GCS Person Data',  -- pei_information_category
+            NULL,                           -- candidate_number: BIP will populate
+            'Additional GCS Person Data',   -- information_type
+            'Additional GCS Person Data',   -- pei_information_category
             s.effective_start_date,
             s.effective_end_date,
             s.pei_info1,  s.pei_info2,  s.pei_info3,  s.pei_info4,
             s.pei_info5,  s.pei_info6,  s.pei_info7,  s.pei_info8,
-            s.pei_info9,  s.pei_info10, s.pei_info11, s.pei_info12,
-            s.pei_info13, s.pei_info14, s.pei_info15, s.pei_info16,
-            s.pei_date1,
-            NULL,                        -- pei_date2: not in Additional GCS Person Data
+            s.pei_info9,  s.pei_info10,
             s.pei_num1, s.pei_num2, s.pei_num3, s.pei_num4, s.pei_num5, s.pei_num6,
             SYSTIMESTAMP
         );

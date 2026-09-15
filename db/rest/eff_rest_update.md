@@ -61,45 +61,39 @@ This table documents the **GCS Recruiting Details** context (validated via POC):
 
 ## Attribute Mapping — Additional GCS Person Data (active context)
 
-Verified via GET 2026-09-15 for PersonId 300000041951212. PEI column positions differ
-from GCS Recruiting Details. Fields NULL for the test person are marked "unverified."
+**Authoritative mapping from `/describe` endpoint (2026-09-15).** The `FND_ACFF_ColumnName`
+property gives the exact PEI column for each attribute. Only 10 char + 6 number fields exist
+(no date fields). Many segments from the old `ext_flex_person_data_v` mapping have been removed.
 
-| REST Attribute | PEI Column | Verified? | Notes |
+| REST Attribute | FND_ACFF_ColumnName | Title | Value Set |
 |---|---|---|---|
-| `teacherSubjectArea` | PEI_INFO1 | YES | "006" |
-| `smartfindClassCode` | PEI_INFO2 | YES | "2" |
-| `bankedVacation` | PEI_INFO3 | YES | "N" |
-| `contractType` | PEI_INFO4 | YES | "A3F" |
-| `contractStipulation1` | PEI_INFO5 | YES | "18" (not contractStip1) |
-| `contractStipulation2` | PEI_INFO6 | YES | "14" |
-| `contractStipulation3` | PEI_INFO7 | YES | "14" |
-| `vacationCarryoverExtensionYOrN` | PEI_INFO8 | YES | "N" (not vacationCarryoverExtYN) |
-| `rehireEligible` | PEI_INFO9 | no | NULL for test person |
-| `processingOwner` | PEI_INFO10 | no | NULL |
-| `workKeys` | PEI_INFO11 | no | NULL |
-| `referenceCheck` | PEI_INFO12 | no | NULL |
-| `sled` | PEI_INFO13 | no | NULL |
-| `nationalBoardCertified` | PEI_INFO14 | YES | "EXPIRED" (NOT `certification`) |
-| `additionalFte` | PEI_INFO15 | no | NULL |
-| `interviewNotes` | PEI_INFO16 | no | NULL |
-| `effectiveDate` | PEI_DATE1 | no | NULL |
-| `teacherYearsOfExperience` | PEI_NUM1 | YES | 9 |
-| `cateExperience` | PEI_NUM2 | YES | 9 |
-| `personalLeave` | PEI_NUM3 | YES | 9 (NOT `personalLeaveUsed`) |
-| `fte` | PEI_NUM4 | no | NULL |
-| `educatorId` | PEI_NUM5 | YES | 12345 |
-| `teacherAssessmentScore` | PEI_NUM6 | no | NULL |
+| `teacherSubjectArea` | PEI_INFORMATION1 | Teacher Subject Area | GCS_TEACH_SUBJECT |
+| `smartfindClassCode` | PEI_INFORMATION2 | SmartFind Class Code | GCS_SMART_CLASS |
+| `bankedVacation` | PEI_INFORMATION3 | Banked Vacation | HRC_YES_NO |
+| `contractType` | PEI_INFORMATION4 | Contract Type | GCS_CONTRACT_TYPE |
+| `contractStipulation1` | PEI_INFORMATION5 | Contract Stipulation 1 | GCS_CONTRACT_STIPS |
+| `contractStipulation2` | PEI_INFORMATION6 | Contract Stipulation 2 | GCS_CONTRACT_STIPS |
+| `contractStipulation3` | PEI_INFORMATION7 | Contract Stipulation 3 | GCS_CONTRACT_STIPS |
+| `vacationCarryoverExtensionYOrN` | PEI_INFORMATION8 | Vacation Carryover Extension Y or N | HRC_YES_NO |
+| `nationalBoardCertified` | PEI_INFORMATION9 | National Board Certified | GCS_NBCT |
+| `paraProfessionalHq` | PEI_INFORMATION10 | Para Professional HQ | GCS_PARA_PROF_HQ |
+| `teacherYearsOfExperience` | PEI_INFORMATION_NUMBER1 | Teacher Years of Experience | |
+| `cateExperience` | PEI_INFORMATION_NUMBER2 | CATE Experience | |
+| `personalLeave` | PEI_INFORMATION_NUMBER3 | Personal Leave Used | |
+| `busDriverYearsOfExperience` | PEI_INFORMATION_NUMBER4 | Bus Driver Years of Experience | |
+| `busAideYearsOfExperience` | PEI_INFORMATION_NUMBER5 | Bus Aide Years of Experience | |
+| `educatorId` | PEI_INFORMATION_NUMBER6 | Educator ID | |
 
-**New fields discovered (not in ext_flex_person_data_v — context was modified):**
+**Segments REMOVED from context (were in ext_flex_person_data_v, no longer exist):**
+- Rehire Eligible, Processing Owner, Work Keys, Reference Check, SLED, Certification,
+  Additional FTE, Interview Notes, Effective Date, FTE, Teacher Assessment Score
 
-| REST Attribute | Value | PEI Column | Notes |
-|---|---|---|---|
-| `paraProfessionalHq` | "Exempt" | unknown | New char segment |
-| `busDriverYearsOfExperience` | 9 | unknown | New number segment |
-| `busAideYearsOfExperience` | 9 | unknown | New number segment |
-
-These 3 fields are NOT in the refresh json_table. The view mapping (`ext_flex_person_data_v`)
-needs updating to include them once their PEI column positions are confirmed.
+**`ext_flex_person_data_v` is OUTDATED** — it maps 16 char + 1 date + 6 number segments
+but the context now has only 10 char + 6 number. The view's PEI column assignments for
+positions 9-16 are wrong (e.g., view says PEI_INFO9 = Rehire Eligible, but it's actually
+National Board Certified). The recruiting report columns sourced from this view
+(rehire_eligible, sled, reference_check, certification, etc.) may be showing stale or
+incorrect data. **View must be rebuilt before go-live.**
 
 ## Example PATCH (Additional GCS Person Data)
 
