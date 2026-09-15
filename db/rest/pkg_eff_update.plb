@@ -4,8 +4,11 @@ CREATE OR REPLACE PACKAGE BODY pkg_eff_update AS
     -- Private constants
     -- =========================================================================
     gc_credential   CONSTANT VARCHAR2(60)  := 'gcs_reports';
+    -- NOTE: Changed from GCS__Recruiting__Details to Additional__GCS__Person__Data
+    -- because recruiting_report_v reads from ext_flex_person_data_v (this context).
+    -- If EFF contexts are reorganized before go-live, update this path.
     gc_context_path CONSTANT VARCHAR2(200) :=
-        '/child/PersonExtraInformationContextGCS__Recruiting__DetailsprivateVO';
+        '/child/PersonExtraInformationContextAdditional__GCS__Person__DataprivateVO';
 
     -- =========================================================================
     -- Private: build the base URL to the personEFF level
@@ -23,7 +26,7 @@ CREATE OR REPLACE PACKAGE BODY pkg_eff_update AS
     -- =========================================================================
     -- REFRESH_EFF_ROW
     -- =========================================================================
-    -- GET current EFF "GCS Recruiting Details" from Fusion REST and MERGE
+    -- GET current EFF "Additional GCS Person Data" from Fusion REST and MERGE
     -- into ext_flex_stg so the local recruiting report reflects current data.
     -- =========================================================================
     PROCEDURE refresh_eff_row (p_person_id IN NUMBER)
@@ -63,6 +66,13 @@ CREATE OR REPLACE PACKAGE BODY pkg_eff_update AS
 
         -- MERGE REST response into ext_flex_stg.
         -- REST returns camelCase names; map to PEI_INFO/NUM/DATE columns.
+        -- ==================================================================
+        -- REST camelCase names mapped to PEI columns for "Additional GCS
+        -- Person Data" context.  Shared field labels (certification, sled,
+        -- etc.) reuse the same REST names validated in the GCS Recruiting
+        -- Details POC.  Fields unique to this context (marked TODO) are
+        -- best guesses — verify with a GET if any return NULL unexpectedly.
+        -- ==================================================================
         MERGE INTO ext_flex_stg t
         USING (
             SELECT
@@ -82,32 +92,32 @@ CREATE OR REPLACE PACKAGE BODY pkg_eff_update AS
                     person_extra_info_id NUMBER         PATH '$.PersonExtraInfoId',
                     effective_start_date VARCHAR2(50)   PATH '$.EffectiveStartDate',
                     effective_end_date   VARCHAR2(50)   PATH '$.EffectiveEndDate',
-                    -- Character fields -> PEI_INFO1..16
-                    pei_info1            VARCHAR2(4000) PATH '$.interviewNotes',
-                    pei_info2            VARCHAR2(4000) PATH '$.certification',
-                    pei_info3            VARCHAR2(4000) PATH '$.sled',
-                    pei_info4            VARCHAR2(4000) PATH '$.referenceCheck',
-                    pei_info5            VARCHAR2(4000) PATH '$.workKeys',
-                    pei_info6            VARCHAR2(4000) PATH '$.processingOwner',
-                    pei_info7            VARCHAR2(4000) PATH '$.comments',
-                    pei_info8            VARCHAR2(4000) PATH '$.payGrade',
-                    pei_info9            VARCHAR2(4000) PATH '$.payStep',
-                    pei_info10           VARCHAR2(4000) PATH '$.additionalComments',
-                    pei_info11           VARCHAR2(4000) PATH '$.contractType',
-                    pei_info12           VARCHAR2(4000) PATH '$.contractStip1',
-                    pei_info13           VARCHAR2(4000) PATH '$.contractStip2',
-                    pei_info14           VARCHAR2(4000) PATH '$.contractStip3',
-                    pei_info15           VARCHAR2(4000) PATH '$.rehireEligibility',
-                    pei_info16           VARCHAR2(4000) PATH '$.teacherSubjectArea',
+                    -- Character fields -> PEI_INFO1..16 (Additional GCS Person Data)
+                    pei_info1            VARCHAR2(4000) PATH '$.teacherSubjectArea',
+                    pei_info2            VARCHAR2(4000) PATH '$.smartfindClassCode',      -- TODO verify
+                    pei_info3            VARCHAR2(4000) PATH '$.bankedVacation',           -- TODO verify
+                    pei_info4            VARCHAR2(4000) PATH '$.contractType',
+                    pei_info5            VARCHAR2(4000) PATH '$.contractStipulation1',     -- TODO verify (was contractStip1 in Recruiting Details)
+                    pei_info6            VARCHAR2(4000) PATH '$.contractStipulation2',     -- TODO verify
+                    pei_info7            VARCHAR2(4000) PATH '$.contractStipulation3',     -- TODO verify
+                    pei_info8            VARCHAR2(4000) PATH '$.vacationCarryoverExtYN',   -- TODO verify
+                    pei_info9            VARCHAR2(4000) PATH '$.rehireEligible',           -- TODO verify (was rehireEligibility in Recruiting Details)
+                    pei_info10           VARCHAR2(4000) PATH '$.processingOwner',
+                    pei_info11           VARCHAR2(4000) PATH '$.workKeys',
+                    pei_info12           VARCHAR2(4000) PATH '$.referenceCheck',
+                    pei_info13           VARCHAR2(4000) PATH '$.sled',
+                    pei_info14           VARCHAR2(4000) PATH '$.certification',
+                    pei_info15           VARCHAR2(4000) PATH '$.additionalFte',            -- char column in this context
+                    pei_info16           VARCHAR2(4000) PATH '$.interviewNotes',
                     -- Date field -> PEI_DATE1
-                    pei_date1            VARCHAR2(50)   PATH '$.proposedEffectiveDate',
+                    pei_date1            VARCHAR2(50)   PATH '$.effectiveDate',            -- TODO verify (was proposedEffectiveDate in Recruiting Details)
                     -- Number fields -> PEI_NUM1..6 (stored as VARCHAR2 in ext_flex_stg)
-                    pei_num1             VARCHAR2(50)   PATH '$.teacherAssessmentScore',
-                    pei_num2             VARCHAR2(50)   PATH '$.additionalFte',
-                    pei_num3             VARCHAR2(50)   PATH '$.teacherYearsOfExperience',
-                    pei_num4             VARCHAR2(50)   PATH '$.educatorId',
-                    pei_num5             VARCHAR2(50)   PATH '$.cateExperience',
-                    pei_num6             VARCHAR2(50)   PATH '$.fte'
+                    pei_num1             VARCHAR2(50)   PATH '$.teacherYearsOfExperience',
+                    pei_num2             VARCHAR2(50)   PATH '$.cateExperience',
+                    pei_num3             VARCHAR2(50)   PATH '$.personalLeaveUsed',        -- TODO verify
+                    pei_num4             VARCHAR2(50)   PATH '$.fte',
+                    pei_num5             VARCHAR2(50)   PATH '$.educatorId',
+                    pei_num6             VARCHAR2(50)   PATH '$.teacherAssessmentScore'
                 )
             ) jt
             WHERE jt.person_extra_info_id IS NOT NULL
@@ -150,8 +160,8 @@ CREATE OR REPLACE PACKAGE BODY pkg_eff_update AS
             s.person_extra_info_id,
             s.person_id,
             NULL,                        -- candidate_number: BIP will populate
-            'GCS Recruiting Details',    -- information_type
-            'GCS Recruiting Details',    -- pei_information_category
+            'Additional GCS Person Data',  -- information_type
+            'Additional GCS Person Data',  -- pei_information_category
             s.effective_start_date,
             s.effective_end_date,
             s.pei_info1,  s.pei_info2,  s.pei_info3,  s.pei_info4,
@@ -159,7 +169,7 @@ CREATE OR REPLACE PACKAGE BODY pkg_eff_update AS
             s.pei_info9,  s.pei_info10, s.pei_info11, s.pei_info12,
             s.pei_info13, s.pei_info14, s.pei_info15, s.pei_info16,
             s.pei_date1,
-            NULL,                        -- pei_date2: not in Recruiting Details
+            NULL,                        -- pei_date2: not in Additional GCS Person Data
             s.pei_num1, s.pei_num2, s.pei_num3, s.pei_num4, s.pei_num5, s.pei_num6,
             SYSTIMESTAMP
         );
@@ -215,7 +225,7 @@ CREATE OR REPLACE PACKAGE BODY pkg_eff_update AS
 
         IF json_value(l_response, '$.count' RETURNING NUMBER) = 0 THEN
             raise_application_error(-20100,
-                'No GCS Recruiting Details record found for person ID ' || p_person_id);
+                'No Additional GCS Person Data record found for person ID ' || p_person_id);
         END IF;
 
         -- Extract self href (contains hex row key) and effective dates

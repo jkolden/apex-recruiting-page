@@ -1,11 +1,15 @@
 CREATE OR REPLACE PACKAGE pkg_eff_update AS
 -- =============================================================================
--- EFF REST Update: PATCH "GCS Recruiting Details" via Fusion REST API
+-- EFF REST Update: PATCH "Additional GCS Person Data" via Fusion REST API
 -- and refresh local ext_flex_stg row.
+--
+-- NOTE: The recruiting report reads from ext_flex_person_data_v which filters
+-- on information_type = 'Additional GCS Person Data'. If EFF contexts are
+-- reorganized before go-live, update gc_context_path in the body.
 --
 -- Credential: gcs_reports (APEX Web Credential)
 -- API base:   personExtraInformation/{PersonId}/child/personEFF/{PersonId}
---             /child/PersonExtraInformationContextGCS__Recruiting__DetailsprivateVO
+--             /child/PersonExtraInformationContextAdditional__GCS__Person__DataprivateVO
 -- =============================================================================
 
     -- PATCH one or more EFF fields in Fusion, then refresh local ext_flex_stg.
