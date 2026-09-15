@@ -23,6 +23,8 @@ Oracle APEX application for managing the Greenville County Schools recruiting pi
 │   ├── workspace-components/     # Credentials
 │   └── README.md                 # Detailed page-by-page documentation
 ├── db/                           # Database objects (outside APEX export)
+│   ├── bicc/                     # BICC 3-tier pipeline (questionnaire entities)
+│   ├── rest/                     # REST-based data loading (pkg_rest_recruiting)
 │   ├── views/                    # Report and mashup view DDL
 │   ├── tables/                   # Application table DDL
 │   ├── functions/                # Standalone functions
@@ -103,7 +105,33 @@ See [`db/security/`](db/security/) for VPD policy, RLS package, and role managem
 | `EXT_FLEX_RECRUITING_V` | Extensible flex fields (recruiting) |
 | `EXT_FLEX_RETIREMENT_V` | Extensible flex fields (retirement) |
 
-### PL/SQL Packages (not in this repo -- part of the broader pipeline)
+### BICC Questionnaire Pipeline ([`db/bicc/`](db/bicc/))
+
+Questionnaire data flows through the standard BICC 3-tier pipeline: Landing (all VARCHAR2) → Staging (typed, with JOB_ID) → Final (published, PK enforced). Three entities feed the questionnaire views:
+
+| Entity | Landing | Staging | Final | PK |
+|---|---|---|---|---|
+| Answer lookup | `LANDING_QSTNR_ANSWER` | `STG_FBX_QSTNR_ANSWER` | `FBX_QSTNR_ANSWER` | `QSTN_ANSWER_ID` |
+| Questions | `LANDING_QSTNR_QUESTION` | `STG_FBX_QSTNR_QUESTION` | `FBX_QSTNR_QUESTION` | `(QSTNR_PARTICIPANT_ID, QSTNR_QUESTION_ID)` |
+| Responses | `LANDING_QSTNR_RESPONSE` | `STG_FBX_QSTNR_RESPONSE` | `FBX_QSTNR_RESPONSE` | `QSTN_RESPONSE_ID` |
+
+Each entity has a PL/SQL package (`pkg_bicc_qstnr_*`) implementing `load_and_preview()` + `merge()`. The packages use `pkg_bicc_common` utilities for ZIP extraction, safe type conversion, and dedup merge.
+
+The view chain: `FBX_QSTNR_QUESTION` → `FBX_QSTNR_RESPONSE` → `FBX_QSTNR_ANSWER` → joined with REST applicant/requisition tables = `FBX_QSTNR_V` → aggregated per applicant = `FBX_QSTNR_APPLICANT_V`.
+
+### REST Recruiting Pipeline ([`db/rest/`](db/rest/))
+
+`pkg_rest_recruiting` loads three core tables from the Fusion Cloud REST API, replacing the original APEX declarative sync:
+
+| Procedure | Target Table | API Endpoint | Notes |
+|---|---|---|---|
+| `load_requisitions` | `JOB_REQUISITIONS_R` | `recruitingJobRequisitions?expand=requisitionDFF,publishedJobs` | Also loads `REQ_DFF_R`, `REQ_PUBLISHED_JOBS_R` |
+| `load_candidates` | `RECRUITING_CANDIDATES_R` | `recruitingCandidates?expand=candidatePhones` | Cursor-based pagination (10K offset cap workaround), also loads `CANDIDATE_PHONES_R` |
+| `load_applications` | `JOB_APPLICANTS_R` | `recruitingJobApplications` | Incremental with 4-hour overlap |
+
+`refresh_all` calls all three procedures and runs daily at 14:00 UTC via `JOB_REST_RECRUITING_DAILY`.
+
+### Other PL/SQL Packages (not in this repo)
 
 | Package | Purpose |
 |---|---|
@@ -111,17 +139,8 @@ See [`db/security/`](db/security/) for VPD policy, RLS package, and role managem
 | `pkg_ref_correction` | Token generation, validation, and save corrections |
 | `pkg_app_security` | Role checks, login processing, APEX collection population |
 | `pkg_app_attachments` | Fetch attachments from Fusion via REST |
-| `pkg_rest_recruiting` | Load requisitions, candidates, applications from REST |
 | `rec_rls_pkg` | VPD predicate for row-level security |
-
-### Data Sources
-
-| Table | Source |
-|---|---|
-| `JOB_APPLICANTS_R` | `pkg_rest_recruiting` (Fusion REST) |
-| `JOB_REQUISITIONS_R` | `pkg_rest_recruiting` (Fusion REST) |
-| `RECRUITING_CANDIDATES_R` | `pkg_rest_recruiting` (Fusion REST) |
-| `BIP_GALLUP_ASSESSMENTS` | `pkg_bip_soap` (BIP SOAP report) |
+| `pkg_bicc_common` | Shared BICC utilities (ZIP extraction, safe type conversion) |
 
 ## Importing the Application
 
