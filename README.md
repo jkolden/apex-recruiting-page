@@ -1,171 +1,132 @@
-# Recruiting Application — Oracle APEX + Fusion Cloud HCM
+# Greenville County Schools — Recruiting Management Report
 
-Oracle APEX application for managing the Greenville County Schools recruiting pipeline. Authenticates via OAuth with Oracle Fusion Cloud HCM and provides role-based access to applicant data, ranking, phase/state management, reference correction workflows, and notes tracking.
+APEX application for managing the GCS recruiting pipeline. Page 24 (Management Report) is the primary workspace — a Classic Report / Interactive Report backed by `RECRUITING_REPORT_V` that combines REST-synced Fusion recruiting data with EFF flexfields, questionnaires, Gallup assessments, reference corrections, rankings, notes, and survey responses.
 
-| Property | Value |
-|---|---|
-| App ID | 121 (alias: `FA_INTEG_IBZSJB_TEST`) |
-| APEX Version | 24.2 |
-| Export Format | APEX LANG (26.1 modular export) |
+## Architecture
+
+```
+Oracle Fusion Cloud HCM
+  │
+  ├── REST APIs (recruiting, HCM, dimension lookups)
+  │     └── pkg_rest_recruiting    ──→  JOB_REQUISITIONS_R
+  │                                     JOB_APPLICANTS_R
+  │                                     RECRUITING_CANDIDATES_R
+  │                                     CANDIDATE_PHONES_R
+  │                                     REQ_DFF_R
+  │                                     REQ_PUBLISHED_JOBS_R
+  │
+  ├── BICC Extracts (questionnaires)
+  │     └── pkg_bicc_qstnr_*      ──→  QSTNR_ANSWER_BC
+  │                                     QSTNR_QUESTION_BC
+  │                                     QSTNR_RESPONSE_BC
+  │
+  ├── BIP SOAP Reports (Gallup, EFF)
+  │     └── pkg_bip_soap           ──→  BIP_GALLUP_ASSESSMENTS
+  │                                     EXT_FLEX_STG
+  │
+  └── REST PATCH/POST (EFF update, move applicant)
+        └── pkg_eff_update / pkg_rec_move
+                                         │
+                                         ▼
+                              RECRUITING_REPORT_V
+                              (18+ table join, VPD-filtered)
+                                         │
+                                         ▼
+                               APEX Page 24 — IR
+                            (10 interactive features)
+```
+
+## Platform
+
+| Component | Value |
+|-----------|-------|
+| APEX | 24.2 |
 | Database | Oracle Autonomous Transaction Processing (ATP) |
-| Schema | WKSP_FREEDEMO |
-| Auth | OAuth 2.0 (Fusion Cloud federation) |
+| Schema | `WKSP_FREEDEMO` |
+| App ID | 141 |
+| Auth | Oracle Fusion Cloud (APEX Web Credential `gcs_reports`) |
+| Fusion instance | `ibzsjb-test.fa.ocs.oraclecloud.com` |
 
-## Repository Structure
+## Feature Index
 
-```
-├── app/                          # Full APEX LANG modular export
-│   ├── application.apx           # Application definition
-│   ├── pages/                    # Individual page exports (.apx)
-│   ├── shared-components/        # Auth, authorization, lists, themes
-│   ├── static-files/             # JS, CSS, fonts, icons
-│   ├── supporting-objects/       # Install scripts (DB object DDL)
-│   ├── workspace-components/     # Credentials
-│   └── README.md                 # Detailed page-by-page documentation
-├── db/                           # Database objects (outside APEX export)
-│   ├── bicc/                     # BICC 3-tier pipeline (questionnaire entities)
-│   ├── rest/                     # REST-based data loading (pkg_rest_recruiting)
-│   ├── views/                    # Report and mashup view DDL
-│   ├── tables/                   # Application table DDL
-│   ├── functions/                # Standalone functions
-│   └── security/                 # VPD policies, RLS packages, role management
-│       ├── rls/                  # Row-level security (VPD predicates, grants)
-│       └── roles/                # Fusion role sync utilities
-```
+| Folder | Feature | Description |
+|--------|---------|-------------|
+| [move-applicant/](move-applicant/) | Move Applicant | Drawer to move applications between recruiting phases/states via Fusion REST |
+| [ranking/](ranking/) | Principal Ranking | Drawer for hiring managers to rank applicants (1-5 score + recommendation) |
+| [attachments/](attachments/) | Attachments | Modal to list/download Fusion file attachments for a job application |
+| [ref-correction/](ref-correction/) | Reference Correction | One-time secure links for applicants to correct reference contact info |
+| [notes/](notes/) | Notes | Two-level notes system — per application (candidate notes) and per person (applicant notes) |
+| [phones/](phones/) | Candidate Phones | Inline panel showing candidate phone numbers from Fusion |
+| [eff-editor/](eff-editor/) | EFF Editor | Drawer to view/edit GCS Recruiting Details extensible flexfields via REST PATCH |
+| [questionnaires/](questionnaires/) | Questionnaires | BICC pipeline for Fusion recruiting questionnaire answers + Gallup scores |
+| [data-refresh/](data-refresh/) | Data Refresh | On-demand and scheduled REST sync for requisitions, candidates, and applications |
+| [security/](security/) | Security | APEX authorization schemes + VPD row-level security on the report view |
+| [report-view/](report-view/) | Report View | The `RECRUITING_REPORT_V` SQL view + base IR styling CSS |
 
-## Pages
+## Page Inventory
 
-| Page | Name | Description |
-|---|---|---|
-| 24 | Management Report | Primary applicant IR with faceted search, move/rank/attachment drawers |
-| 35 | Notes Hub | Timeline view of all applicant and person notes |
-| 56 | Teacher Report | Filtered variant of page 24 for teacher positions |
-| 100 | Reference Correction | Public-facing form for candidates to correct reference info |
-| 101 | Reference Confirmation | Modal comparing original vs. edited reference values |
-| 4004 | Reference Answers | Modal showing pivoted survey responses with star ratings |
-| 30 | Download Attachment | Streams a Fusion attachment binary to the browser — no visible UI (see below) |
-| 9994 | My Departments | Drawer showing user's department assignments + overrides |
-| 9995 | Override Grants (IR) | Admin IR for department-level access overrides |
-| 9996 | Override Grants (Form) | Form drawer for creating/editing override grants |
-| 9997 | Locations & Departments | User's Fusion assignment positions and locations |
-| 9998 | My Roles | User's Fusion security roles (REST real-time + BIP fallback) |
-| 9999 | Login | Login page |
+| Page | Name | Purpose |
+|------|------|---------|
+| 24 | Management Report | Primary IR — all features above render here |
+| 30 | Attachment Download | Hidden page that streams binary file downloads |
+| 35 | Notes Hub | Full notes timeline view (uses `notes_timeline_v`) |
+| 56 | Reference Correction | Public correction form (no auth) |
+| 100 | Token Validation | Public token check + redirect to page 101 |
+| 101 | Correction Submit | Public form for reference corrections |
+| 4004 | Admin: Dept Grants | Admin page for managing `rec_dept_grant` rows |
+| 9003 | Operations | Manual triggers for REST sync, BICC extract, BIP reports, reconciliation |
 
-See [`app/README.md`](app/README.md) for detailed page-level documentation including Ajax callbacks, drawers, modals, and data sources.
+## Static Files on Page 24
 
-## Key Features
+All JS and CSS are loaded as Static Application Files with `#APP_FILES#` references:
 
-### Move Applicant Between Phases/States
-Slide-out drawer that moves a job application through the recruiting workflow (Screen, Interview, Offer, etc.) by calling the Fusion REST API via `pkg_rec_move`. Phase/state LOVs sourced from `rec_routing_phase` / `rec_routing_state`.
+### JavaScript
 
-### Applicant Ranking
-Score applicants 1-5 with a recommendation level (Highly Recommended / Recommended / Consider / Not Recommended). Stored locally in `applicant_ranking`.
+| File | Feature |
+|------|---------|
+| `eff_editor_js#MIN#.js` | EFF Editor drawer |
+| `move_applicant_js#MIN#.js` | Move Applicant drawer |
+| `ranking_js#MIN#.js` | Principal Ranking drawer |
+| `attachments_js#MIN#.js` | Attachments modal |
+| `ref_correction_link_js#MIN#.js` | Reference Correction drawer |
+| `app_notes_js#MIN#.js` | Application-level notes panel |
+| `person_notes_js#MIN#.js` | Person-level notes panel |
+| `candidate_phones_js#MIN#.js` | Candidate phones panel |
+| `refresh_recruiting_js#MIN#.js` | Refresh data dropdown button |
 
-### Reference Correction Workflow
-Generates a secure one-time URL and emails it to candidates so they can correct their reference contact information. Public-facing pages 100/101 require no authentication. Powered by `pkg_ref_correction`.
+### CSS
 
-### Attachment Viewer
-Modal that lists candidate attachments fetched from Fusion via REST with file type icons and download links. Powered by `pkg_app_attachments` ([`db/rest/`](db/rest/)).
+| File | Feature |
+|------|---------|
+| `page24_base_css#MIN#.css` | Shared IR styling (pills, badges, sticky columns, breadcrumb) |
+| `eff_editor_css#MIN#.css` | EFF Editor drawer |
+| `move_applicant_css#MIN#.css` | Move Applicant drawer |
+| `ranking_css#MIN#.css` | Principal Ranking drawer |
+| `attachments_css#MIN#.css` | Attachments modal |
+| `ref_correction_link_css#MIN#.css` | Reference Correction drawer |
+| `app_notes_css#MIN#.css` | Application-level notes panel |
+| `person_notes_css#MIN#.css` | Person-level notes panel |
+| `candidate_phones_css#MIN#.css` | Candidate phones panel |
 
-**Page 30 (Download Attachment)** is a critical hidden dependency — it has no visible UI but is the download endpoint for every attachment link. The page contains only two hidden items (`P30_JOB_APPLICATION_ID`, `P30_ATTACHED_DOCUMENT_ID`) and a Before Header process that calls `pkg_app_attachments.download_attachment()` to stream the binary. Both items must have **Value Protected = No** so URL parameters are accepted without checksum. If this page is accidentally deleted, attachments will fail with `ERR-1002 Unable to find item ID`. Recovery script: [`db/rest/f121_page_30.sql`](db/rest/f121_page_30.sql).
+## Shared Dependencies
 
-### Notes (Two Levels)
-- **Candidate Notes** -- tied to a specific job application
-- **Applicant Notes** -- tied to a person across all applications
+These tables/packages are used by multiple features and are not owned by any single feature folder:
 
-### Gallup Assessment Scores
-Color-coded badges for Gallup assessment results: band (HP/MP/LP) and numeric score with gradient coloring.
+| Object | Used by |
+|--------|---------|
+| `JOB_APPLICANTS_R` | report-view, move-applicant, data-refresh, questionnaires |
+| `JOB_REQUISITIONS_R` | report-view, data-refresh, questionnaires |
+| `RECRUITING_CANDIDATES_R` | report-view, data-refresh |
+| `FBX_HCM_EMPLOYEE` | report-view, security, ref-correction |
+| `EXT_FLEX_STG` | eff-editor, report-view |
+| `pkg_bicc_common` | data-refresh, questionnaires, security |
+| `pkg_email` | ref-correction |
+| `APEX Web Credential (gcs_reports)` | data-refresh, eff-editor, attachments, move-applicant, security |
 
-### Questionnaire Data
-Questionnaire scores from `FBX_QSTNR_APPLICANT_V` showing structured answers, free-text responses, and answer modes.
+## Scheduler Jobs
 
-## Security Model
-
-### Authentication
-OAuth 2.0 with Oracle Fusion Cloud federation. Post-authentication calls `pkg_app_security.login_role_check` to populate APEX collections (`FUSION_USER_ROLES`, `FUSION_USER_ASSIGNMENTS`).
-
-### Authorization
-| Scheme | Controls |
-|---|---|
-| `IS_ADMIN` | Full access, VPD bypass |
-| `IS_RECRUITING_MGR` | Page 24/56 access |
-| `IS_HIRING_MANAGER` | Hiring manager features |
-
-### Row-Level Security (VPD)
-`REC_DEPT_READ_POLICY` on `RECRUITING_REPORT_V` with five OR'd access paths: recruiter on req, hiring manager on req, wide department grant, recruiter+department grant, hiring manager+department grant. Override table `rec_dept_grant` for admin-managed access.
-
-See [`db/security/`](db/security/) for VPD policy, RLS package, and role management scripts.
-
-## Database Dependencies
-
-### Views ([`db/views/`](db/views/))
-
-| View | Purpose |
-|---|---|
-| `RECRUITING_REPORT_V` | Main applicant report (joins applicants + requisitions + candidates + corrections) |
-| `FBX_QSTNR_V` | Questionnaire answers for reference pre-population |
-| `FBX_QSTNR_APPLICANT_V` | Questionnaire scores per applicant |
-| `EXT_FLEX_RECRUITING_V` | Extensible flex fields (recruiting) |
-| `EXT_FLEX_RETIREMENT_V` | Extensible flex fields (retirement) |
-
-### BICC Questionnaire Pipeline ([`db/bicc/`](db/bicc/))
-
-Questionnaire data flows through the standard BICC 3-tier pipeline: Landing (all VARCHAR2) → Staging (typed, with JOB_ID) → Final (published, PK enforced). Three entities feed the questionnaire views:
-
-| Entity | Landing | Staging | Final | PK |
-|---|---|---|---|---|
-| Answer lookup | `LANDING_QSTNR_ANSWER` | `STG_FBX_QSTNR_ANSWER` | `FBX_QSTNR_ANSWER` | `QSTN_ANSWER_ID` |
-| Questions | `LANDING_QSTNR_QUESTION` | `STG_FBX_QSTNR_QUESTION` | `FBX_QSTNR_QUESTION` | `(QSTNR_PARTICIPANT_ID, QSTNR_QUESTION_ID)` |
-| Responses | `LANDING_QSTNR_RESPONSE` | `STG_FBX_QSTNR_RESPONSE` | `FBX_QSTNR_RESPONSE` | `QSTN_RESPONSE_ID` |
-
-Each entity has a PL/SQL package (`pkg_bicc_qstnr_*`) implementing `load_and_preview()` + `merge()`. The packages use `pkg_bicc_common` utilities for ZIP extraction, safe type conversion, and dedup merge.
-
-The view chain: `FBX_QSTNR_QUESTION` → `FBX_QSTNR_RESPONSE` → `FBX_QSTNR_ANSWER` → joined with REST applicant/requisition tables = `FBX_QSTNR_V` → aggregated per applicant = `FBX_QSTNR_APPLICANT_V`.
-
-### REST Recruiting Pipeline ([`db/rest/`](db/rest/))
-
-`pkg_rest_recruiting` loads three core tables from the Fusion Cloud REST API, replacing the original APEX declarative sync:
-
-| Procedure | Target Table | API Endpoint | Notes |
-|---|---|---|---|
-| `load_requisitions` | `JOB_REQUISITIONS_R` | `recruitingJobRequisitions?expand=requisitionDFF,publishedJobs` | Also loads `REQ_DFF_R`, `REQ_PUBLISHED_JOBS_R` |
-| `load_candidates` | `RECRUITING_CANDIDATES_R` | `recruitingCandidates?expand=candidatePhones` | Cursor-based pagination (10K offset cap workaround), also loads `CANDIDATE_PHONES_R` |
-| `load_applications` | `JOB_APPLICANTS_R` | `recruitingJobApplications` | Incremental with 4-hour overlap |
-
-`refresh_all` calls all three procedures and runs daily at 14:00 UTC via `JOB_REST_RECRUITING_DAILY`.
-
-### Attachment Download ([`db/rest/`](db/rest/))
-
-`pkg_app_attachments` fetches candidate attachments from Fusion Cloud via REST and streams binaries to the browser.
-
-| Procedure | Purpose |
-|---|---|
-| `list_attachments(p_job_application_id)` | Returns JSON array of FILE-type attachments with metadata and download URLs |
-| `download_attachment(p_job_application_id, p_attached_document_id)` | Fetches binary via enclosure URL (with base64 fallback) and streams to browser |
-
-API endpoint: `GET /hcmRestApi/resources/11.13.18.05/recruitingJobApplications/{id}/child/attachments`
-
-Recovery script for page 30: [`db/rest/f121_page_30.sql`](db/rest/f121_page_30.sql)
-
-### Other PL/SQL Packages (not in this repo)
-
-| Package | Purpose |
-|---|---|
-| `pkg_rec_move` | Move applicant between phases/states via REST POST |
-| `pkg_ref_correction` | Token generation, validation, and save corrections |
-| `pkg_app_security` | Role checks, login processing, APEX collection population |
-| `rec_rls_pkg` | VPD predicate for row-level security |
-| `pkg_bicc_common` | Shared BICC utilities (ZIP extraction, safe type conversion) |
-
-## Importing the Application
-
-The `app/` directory is a standard APEX LANG 26.1 modular export. To import:
-
-1. In APEX SQL Workshop or via `apex export` CLI, use the modular import pointing at the `app/` directory
-2. Run the supporting objects install script (`app/supporting-objects/install-scripts/db-objects.sql`) to create required database objects
-3. Create the required Web Credentials for your Fusion instance (see `app/workspace-components/credentials/`)
-4. Deploy the view and security DDL from `db/`
-
-## License
-
-This project is provided as a reference implementation for Oracle APEX + Fusion Cloud HCM integration patterns.
+| Job | Schedule | Package | Purpose |
+|-----|----------|---------|---------|
+| `JOB_REST_RECRUITING_DAILY` | 14:00 UTC daily | `pkg_rest_recruiting.refresh_all` | Sync requisitions, candidates, applications |
+| `JOB_REST_SYNC_DAILY` | 14:00 UTC daily | `pkg_rest_sync.sync_all` | Sync all other REST data sources (19 sources) |
+| `JOB_BICC_DAILY` | (configured separately) | `pkg_bicc_common.run_bicc_daily_today` | BICC pipeline for questionnaires and other entities |
